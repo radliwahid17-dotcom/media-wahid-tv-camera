@@ -36,7 +36,7 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraX")
     implementation("androidx.camera:camera-video:$cameraX")
 
-    val media3 = "1.11.1"
+    val media3 = "1.10.1"
     implementation("androidx.media3:media3-common:$media3")
     implementation("androidx.media3:media3-transformer:$media3")
     implementation("androidx.media3:media3-effect:$media3")
