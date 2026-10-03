@@ -122,11 +122,16 @@ class MainActivity : ComponentActivity() {
         }
         root.addView(previewView, FrameLayout.LayoutParams(-1, -1))
 
+        val watermark = ImageView(this).apply {
+            setImageResource(R.drawable.media_wahid_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            alpha = 0.94f
+        }
         root.addView(
-            BrandWatermarkView(this),
-            FrameLayout.LayoutParams(dp(205), dp(64), Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(16)
-                marginEnd = dp(14)
+            watermark,
+            FrameLayout.LayoutParams(dp(150), dp(94), Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(14)
+                marginEnd = dp(12)
             }
         )
 
@@ -369,14 +374,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
-
-private class BrandWatermarkView(context: Context) : View(context) {
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        BrandPainter.draw(canvas, width, height)
-    }
-}
-
+\n
 private class RecordButtonView(context: Context) : View(context) {
     var isRecording: Boolean = false
         set(value) {
