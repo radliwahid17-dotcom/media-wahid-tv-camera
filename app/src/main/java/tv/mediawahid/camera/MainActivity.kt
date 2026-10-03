@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -126,11 +127,16 @@ class MainActivity : ComponentActivity() {
         val watermark = ImageView(this).apply {
             setImageResource(R.drawable.media_wahid_logo)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            alpha = 0.94f
+            setPadding(dp(7), dp(7), dp(7), dp(7))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(238, 255, 255, 255))
+                cornerRadius = dp(10).toFloat()
+            }
+            alpha = 0.96f
         }
         root.addView(
             watermark,
-            FrameLayout.LayoutParams(dp(150), dp(94), Gravity.TOP or Gravity.END).apply {
+            FrameLayout.LayoutParams(dp(158), dp(102), Gravity.TOP or Gravity.END).apply {
                 topMargin = dp(14)
                 marginEnd = dp(12)
             }
