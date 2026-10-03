@@ -375,7 +375,6 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
-\n
 private class RecordButtonView(context: Context) : View(context) {
     var isRecording: Boolean = false
         set(value) {
