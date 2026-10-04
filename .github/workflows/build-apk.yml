@@ -77,11 +77,11 @@ jobs:
           grep -R "WatermarkTemplate.MEDIA_ONLY" app/src/main/java/tv/mediawahid/camera
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.0-DUAL-TEMPLATE.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.1-DUAL-TEMPLATE.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE
-          path: MEDIA-WAHID-TV-Camera-v4.0.0-DUAL-TEMPLATE.apk
+          path: MEDIA-WAHID-TV-Camera-v4.0.1-DUAL-TEMPLATE.apk
           retention-days: 30
