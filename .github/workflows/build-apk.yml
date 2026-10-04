@@ -27,7 +27,7 @@ jobs:
 
       - name: Reconstruct final Masjid logo
         run: |
-          cat app/src/main/logo-source/masjid_final.part*.b64 | tr -d '\\n\\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
+          cat app/src/main/logo-source/masjid_final.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
           test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "8690"
           echo "667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg" | sha256sum -c -
 
