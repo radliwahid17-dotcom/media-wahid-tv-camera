@@ -1,13 +1,11 @@
 package tv.mediawahid.camera
 
-import android.Manifest
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.ContentValues
-import android.content.Context
-import android.content.pm.ActivityInfo
-import android.content.pm.PackageManager
-import android.graphics.Canvas
+import android.content.Intent
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -16,9 +14,6 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
-import android.view.ScaleGestureDetector
-import android.view.Surface
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -29,136 +24,74 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.Camera
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.FallbackStrategy
-import androidx.camera.video.FileOutputOptions
-import androidx.camera.video.Quality
-import androidx.camera.video.QualitySelector
-import androidx.camera.video.Recorder
-import androidx.camera.video.Recording
-import androidx.camera.video.VideoCapture
-import androidx.camera.video.VideoRecordEvent
-import androidx.camera.view.PreviewView
-import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.util.UnstableApi
 import java.io.File
-import java.util.Locale
-import java.util.concurrent.TimeUnit
-import kotlin.math.roundToInt
 
 @UnstableApi
 class MainActivity : ComponentActivity() {
+
     private lateinit var root: FrameLayout
-    private lateinit var previewView: PreviewView
-    private lateinit var recordButton: RecordButtonView
-    private lateinit var actionText: TextView
-    private lateinit var timerText: TextView
-    private lateinit var pauseResumeButton: TextView
-    private lateinit var switchCameraButton: TextView
-    private lateinit var zoomOutButton: TextView
-    private lateinit var zoomInButton: TextView
-    private lateinit var zoomText: TextView
+    private lateinit var openCameraButton: TextView
     private lateinit var processingPanel: View
-    private lateinit var savedMessage: TextView
+    private lateinit var statusText: TextView
 
-    private var videoCapture: VideoCapture<Recorder>? = null
-    private var activeRecording: Recording? = null
-    private var recordingStartedAt = 0L
-    private var pausedAccumulatedMs = 0L
-    private var pauseStartedAt = 0L
-    private var isRecordingPaused = false
-    private var lensFacing = CameraSelector.LENS_FACING_BACK
-    private var cameraSwitchEnabled = true
-    private var activeCamera: Camera? = null
-    private var currentZoomRatio = 1f
-    private var minZoomRatio = 1f
-    private var maxZoomRatio = 1f
-    private lateinit var scaleGestureDetector: ScaleGestureDetector
-    private val timerHandler = Handler(Looper.getMainLooper())
+    private var currentCaptureFile: File? = null
+    private var cameraLaunchInProgress = false
+    private var autoLaunchDone = false
 
-    private val permissionsLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions[Manifest.permission.CAMERA] == true &&
-            permissions[Manifest.permission.RECORD_AUDIO] == true
-        ) bindCamera()
-        else Toast.makeText(
-            this,
-            "Pilih IZINKAN untuk Kamera dan Mikrofon.",
-            Toast.LENGTH_LONG
-        ).show()
-    }
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    private val timerRunnable = object : Runnable {
-        override fun run() {
-            if (activeRecording == null) return
-            val now = System.currentTimeMillis()
-            val effectiveNow = if (isRecordingPaused) pauseStartedAt else now
-            val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(
-                effectiveNow - recordingStartedAt - pausedAccumulatedMs
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        cameraLaunchInProgress = false
+
+        val captureFile = currentCaptureFile
+        val returnedUri = result.data?.data
+
+        val usableFile = when {
+            captureFile != null && captureFile.exists() && captureFile.length() > 0L -> captureFile
+            returnedUri != null -> copyReturnedVideoToCache(returnedUri)
+            else -> null
+        }
+
+        if (usableFile != null && usableFile.exists() && usableFile.length() > 0L) {
+            processAndSave(usableFile)
+        } else {
+            captureFile?.delete()
+            currentCaptureFile = null
+            showReadyState(
+                if (result.resultCode == Activity.RESULT_CANCELED) {
+                    "Rekaman dibatalkan"
+                } else {
+                    "Video belum diterima. Coba rekam lagi."
+                }
             )
-            timerText.text = String.format(
-                Locale.US,
-                if (isRecordingPaused) "Ⅱ PAUSE  %02d:%02d" else "● REC  %02d:%02d",
-                totalSeconds / 60,
-                totalSeconds % 60
-            )
-            timerHandler.postDelayed(this, 250)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        buildSimpleUi()
+        buildUi()
         hideSystemBars()
 
-        recordButton.setOnClickListener {
-            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            if (activeRecording == null) startRecording() else activeRecording?.stop()
+        openCameraButton.setOnClickListener {
+            launchSamsungCamera()
         }
 
-        switchCameraButton.setOnClickListener {
-            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            switchCamera()
-        }
-
-        pauseResumeButton.setOnClickListener {
-            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            togglePauseResume()
-        }
-
-        zoomOutButton.setOnClickListener {
-            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            changeZoom(1f / 1.25f)
-        }
-
-        zoomInButton.setOnClickListener {
-            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            changeZoom(1.25f)
-        }
-
-        scaleGestureDetector = ScaleGestureDetector(
-            this,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    setZoom(currentZoomRatio * detector.scaleFactor)
-                    return true
+        if (savedInstanceState == null) {
+            mainHandler.postDelayed({
+                if (!isFinishing && !cameraLaunchInProgress && !autoLaunchDone) {
+                    autoLaunchDone = true
+                    launchSamsungCamera()
                 }
-            }
-        )
-        previewView.setOnTouchListener { _, event ->
-            scaleGestureDetector.onTouchEvent(event)
-            true
+            }, 450)
         }
-
-        requestPermissionsOrStart()
     }
 
     override fun onResume() {
@@ -166,414 +99,201 @@ class MainActivity : ComponentActivity() {
         if (::root.isInitialized) hideSystemBars()
     }
 
-    private fun buildSimpleUi() {
+    private fun buildUi() {
         root = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Color.rgb(7, 9, 12))
             keepScreenOn = true
         }
         setContentView(root)
 
-        previewView = PreviewView(this).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-        }
-        root.addView(previewView, FrameLayout.LayoutParams(-1, -1))
-
-        val masjidWatermark = ImageView(this).apply {
-            setImageResource(R.drawable.masjid_raya_logo)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            alpha = 0.96f
-        }
-        root.addView(
-            masjidWatermark,
-            FrameLayout.LayoutParams(dp(165), dp(95), Gravity.TOP or Gravity.START).apply {
-                topMargin = dp(14)
-                marginStart = dp(12)
-            }
-        )
-
-        val watermark = ImageView(this).apply {
-            setImageResource(R.drawable.media_wahid_logo_original)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            alpha = 0.96f
-        }
-        root.addView(
-            watermark,
-            FrameLayout.LayoutParams(dp(165), dp(95), Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(14)
-                marginEnd = dp(12)
-            }
-        )
-
-        timerText = TextView(this).apply {
-            text = "● REC  00:00"
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(dp(10), dp(7), dp(10), dp(7))
-            setBackgroundColor(Color.argb(165, 0, 0, 0))
-            visibility = View.GONE
-        }
-        root.addView(
-            timerText,
-            FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                topMargin = dp(18)
-            }
-        )
-
-        val bottom = LinearLayout(this).apply {
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), dp(34), dp(22), dp(28))
         }
-        actionText = TextView(this).apply {
-            text = "REKAM"
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(dp(16), dp(6), dp(16), dp(6))
-            setBackgroundColor(Color.argb(150, 0, 0, 0))
-            gravity = Gravity.CENTER
-        }
-        recordButton = RecordButtonView(this)
-        pauseResumeButton = TextView(this).apply {
-            text = "PAUSE"
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-            visibility = View.GONE
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(22).toFloat()
-                setColor(Color.argb(190, 0, 0, 0))
-                setStroke(dp(1), Color.argb(210, 255, 255, 255))
-            }
-        }
-        bottom.addView(actionText, LinearLayout.LayoutParams(-2, -2).apply {
-            bottomMargin = dp(8)
-        })
-        bottom.addView(pauseResumeButton, LinearLayout.LayoutParams(dp(112), dp(44)).apply {
-            bottomMargin = dp(10)
-        })
-        bottom.addView(recordButton, LinearLayout.LayoutParams(dp(106), dp(106)))
-        root.addView(
-            bottom,
-            FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = dp(24)
-            }
-        )
+        root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
-        switchCameraButton = TextView(this).apply {
-            text = "DEPAN"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(24).toFloat()
-                setColor(Color.argb(175, 0, 0, 0))
-                setStroke(dp(1), Color.argb(190, 255, 255, 255))
-            }
-        }
-        root.addView(
-            switchCameraButton,
-            FrameLayout.LayoutParams(dp(92), dp(48), Gravity.BOTTOM or Gravity.END).apply {
-                bottomMargin = dp(52)
-                marginEnd = dp(20)
-            }
-        )
-
-        val zoomControls = LinearLayout(this).apply {
+        val logoRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        zoomOutButton = createSmallControlButton("−")
-        zoomText = TextView(this).apply {
-            text = "1.0×"
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.argb(150, 0, 0, 0))
+
+        val masjidLogo = ImageView(this).apply {
+            setImageResource(R.drawable.masjid_raya_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
         }
-        zoomInButton = createSmallControlButton("+")
-        zoomControls.addView(zoomOutButton, LinearLayout.LayoutParams(dp(48), dp(48)))
-        zoomControls.addView(zoomText, LinearLayout.LayoutParams(dp(62), dp(48)).apply {
-            marginStart = dp(6)
-            marginEnd = dp(6)
-        })
-        zoomControls.addView(zoomInButton, LinearLayout.LayoutParams(dp(48), dp(48)))
-        root.addView(
-            zoomControls,
-            FrameLayout.LayoutParams(-2, dp(48), Gravity.BOTTOM or Gravity.START).apply {
-                bottomMargin = dp(52)
-                marginStart = dp(20)
-            }
+        val mediaLogo = ImageView(this).apply {
+            setImageResource(R.drawable.media_wahid_logo_original)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+
+        logoRow.addView(
+            masjidLogo,
+            LinearLayout.LayoutParams(0, dp(86), 1f).apply { marginEnd = dp(8) }
         )
+        logoRow.addView(
+            mediaLogo,
+            LinearLayout.LayoutParams(0, dp(86), 1f).apply { marginStart = dp(8) }
+        )
+        content.addView(logoRow, LinearLayout.LayoutParams(-1, dp(86)))
+
+        content.addView(TextView(this).apply {
+            text = "MEDIA WAHID TV CAMERA"
+            setTextColor(Color.WHITE)
+            textSize = 23f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, dp(38), 0, dp(6))
+        }, LinearLayout.LayoutParams(-1, -2))
+
+        content.addView(TextView(this).apply {
+            text = "Kualitas kamera Samsung • 2 logo otomatis"
+            setTextColor(Color.rgb(181, 186, 194))
+            textSize = 14f
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, -2))
+
+        content.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
+
+        val badge = TextView(this).apply {
+            text = "KAMERA BAWAAN SAMSUNG"
+            setTextColor(Color.rgb(218, 225, 235))
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(18), dp(9), dp(18), dp(9))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(20).toFloat()
+                setColor(Color.rgb(25, 29, 36))
+                setStroke(dp(1), Color.rgb(53, 61, 73))
+            }
+        }
+        content.addView(badge, LinearLayout.LayoutParams(-2, -2).apply {
+            bottomMargin = dp(18)
+        })
+
+        openCameraButton = TextView(this).apply {
+            text = "BUKA KAMERA"
+            setTextColor(Color.WHITE)
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(28).toFloat()
+                setColor(Color.rgb(230, 41, 50))
+            }
+        }
+        content.addView(openCameraButton, LinearLayout.LayoutParams(-1, dp(58)))
+
+        statusText = TextView(this).apply {
+            text = "Selesai rekam → 2 logo dipasang otomatis"
+            setTextColor(Color.rgb(150, 157, 168))
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(15), 0, 0)
+        }
+        content.addView(statusText, LinearLayout.LayoutParams(-1, -2))
 
         val processing = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.argb(235, 0, 0, 0))
+            setBackgroundColor(Color.argb(244, 7, 9, 12))
             visibility = View.GONE
-            addView(ProgressBar(this@MainActivity), LinearLayout.LayoutParams(dp(68), dp(68)))
+
+            addView(ProgressBar(this@MainActivity), LinearLayout.LayoutParams(dp(64), dp(64)))
+
             addView(TextView(this@MainActivity).apply {
-                text = "MENYIMPAN VIDEO..."
+                text = "MEMPROSES VIDEO..."
                 setTextColor(Color.WHITE)
                 textSize = 20f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
                 gravity = Gravity.CENTER
-                setPadding(0, dp(18), 0, 0)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, dp(20), 0, 0)
             })
+
             addView(TextView(this@MainActivity).apply {
-                text = "Jangan tutup aplikasi"
-                setTextColor(Color.LTGRAY)
+                text = "Memasang logo Masjid Raya + MEDIA WAHID TV"
+                setTextColor(Color.rgb(180, 186, 195))
                 textSize = 13f
                 gravity = Gravity.CENTER
-                setPadding(0, dp(6), 0, 0)
+                setPadding(dp(28), dp(8), dp(28), 0)
             })
         }
         processingPanel = processing
         root.addView(processing, FrameLayout.LayoutParams(-1, -1))
-
-        savedMessage = TextView(this).apply {
-            text = "VIDEO TERSIMPAN ✓"
-            setTextColor(Color.WHITE)
-            textSize = 20f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(dp(24), dp(16), dp(24), dp(16))
-            setBackgroundColor(Color.rgb(19, 138, 85))
-            visibility = View.GONE
-        }
-        root.addView(savedMessage, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
     }
 
-    private fun requestPermissionsOrStart() {
-        val camera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
-        val mic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-        if (camera && mic) bindCamera()
-        else permissionsLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
-    }
+    private fun launchSamsungCamera() {
+        if (cameraLaunchInProgress) return
 
-    private fun createSmallControlButton(label: String): TextView =
-        TextView(this).apply {
-            text = label
-            setTextColor(Color.WHITE)
-            textSize = 24f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.argb(175, 0, 0, 0))
-                setStroke(dp(1), Color.argb(190, 255, 255, 255))
-            }
-        }
+        val capturesDir = File(cacheDir, "captures").apply { mkdirs() }
+        val captureFile = File(capturesDir, "samsung_${System.currentTimeMillis()}.mp4")
+        currentCaptureFile?.delete()
+        currentCaptureFile = captureFile
 
-    private fun changeZoom(multiplier: Float) {
-        setZoom(currentZoomRatio * multiplier)
-    }
-
-    private fun setZoom(ratio: Float) {
-        val camera = activeCamera ?: return
-        val target = ratio.coerceIn(minZoomRatio, maxZoomRatio)
-        currentZoomRatio = target
-        zoomText.text = String.format(Locale.US, "%.1f×", target)
-        camera.cameraControl.setZoomRatio(target)
-    }
-
-    private fun updateZoomBounds(camera: Camera) {
-        val state = camera.cameraInfo.zoomState.value
-        minZoomRatio = state?.minZoomRatio ?: 1f
-        maxZoomRatio = state?.maxZoomRatio ?: 1f
-        currentZoomRatio = 1f.coerceIn(minZoomRatio, maxZoomRatio)
-        zoomText.text = String.format(Locale.US, "%.1f×", currentZoomRatio)
-        zoomOutButton.isEnabled = maxZoomRatio > minZoomRatio
-        zoomInButton.isEnabled = maxZoomRatio > minZoomRatio
-        val alpha = if (maxZoomRatio > minZoomRatio) 1f else 0.45f
-        zoomOutButton.alpha = alpha
-        zoomInButton.alpha = alpha
-        camera.cameraControl.setZoomRatio(currentZoomRatio)
-    }
-
-    private fun togglePauseResume() {
-        val recording = activeRecording ?: return
-
-        if (isRecordingPaused) {
-            recording.resume()
-            pausedAccumulatedMs += System.currentTimeMillis() - pauseStartedAt
-            pauseStartedAt = 0L
-            isRecordingPaused = false
-            pauseResumeButton.text = "PAUSE"
-            actionText.text = "STOP"
-        } else {
-            recording.pause()
-            pauseStartedAt = System.currentTimeMillis()
-            isRecordingPaused = true
-            pauseResumeButton.text = "LANJUT"
-            actionText.text = "STOP"
-        }
-    }
-
-    private fun switchCamera() {
-        if (!cameraSwitchEnabled || activeRecording != null) return
-
-        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-            CameraSelector.LENS_FACING_FRONT
-        } else {
-            CameraSelector.LENS_FACING_BACK
-        }
-
-        updateSwitchCameraLabel()
-        bindCamera()
-    }
-
-    private fun updateSwitchCameraLabel() {
-        switchCameraButton.text = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-            "DEPAN"
-        } else {
-            "BELAKANG"
-        }
-    }
-
-    private fun setCameraSwitchAvailable(available: Boolean) {
-        cameraSwitchEnabled = available
-        switchCameraButton.isEnabled = available
-        switchCameraButton.alpha = if (available) 1f else 0.45f
-    }
-
-    private fun bindCamera() {
-        setCameraSwitchAvailable(false)
-
-        val future = ProcessCameraProvider.getInstance(this)
-        future.addListener({
-            val provider = future.get()
-            val rotation = previewView.display?.rotation ?: Surface.ROTATION_0
-            val selector = CameraSelector.Builder()
-                .requireLensFacing(lensFacing)
-                .build()
-
-            if (!provider.hasCamera(selector)) {
-                lensFacing = CameraSelector.LENS_FACING_BACK
-                updateSwitchCameraLabel()
-                setCameraSwitchAvailable(true)
-                Toast.makeText(this, "Kamera tersebut tidak tersedia.", Toast.LENGTH_LONG).show()
-                return@addListener
-            }
-
-            val preview = Preview.Builder()
-                .setTargetRotation(rotation)
-                .build()
-                .also { it.setSurfaceProvider(previewView.surfaceProvider) }
-
-            val recorder = Recorder.Builder()
-                .setQualitySelector(
-                    QualitySelector.fromOrderedList(
-                        listOf(Quality.FHD, Quality.HD),
-                        FallbackStrategy.lowerQualityOrHigherThan(Quality.HD)
-                    )
-                )
-                .build()
-
-            val newVideoCapture = VideoCapture.withOutput(recorder).also {
-                it.targetRotation = rotation
-            }
-
-            try {
-                provider.unbindAll()
-                val camera = provider.bindToLifecycle(
-                    this,
-                    selector,
-                    preview,
-                    newVideoCapture
-                )
-
-                videoCapture = newVideoCapture
-                activeCamera = camera
-                updateZoomBounds(camera)
-                applyBrighterExposure(camera)
-                setCameraSwitchAvailable(true)
-            } catch (_: Throwable) {
-                setCameraSwitchAvailable(true)
-                Toast.makeText(this, "Kamera tidak bisa dibuka.", Toast.LENGTH_LONG).show()
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun applyBrighterExposure(camera: Camera) {
-        val exposureState = camera.cameraInfo.exposureState
-        if (!exposureState.isExposureCompensationSupported) return
-
-        val range = exposureState.exposureCompensationRange
-        val step = exposureState.exposureCompensationStep.toFloat()
-        if (step <= 0f) return
-
-        // v1.7: dinaikkan lagi agar hasil video lebih terang pada kondisi indoor.
-        // Tetap di-clamp ke batas exposure yang didukung kamera perangkat.
-        val targetIndex = (1.8f / step)
-            .roundToInt()
-            .coerceIn(range.lower, range.upper)
-
-        camera.cameraControl.setExposureCompensationIndex(targetIndex)
-    }
-
-    private fun startRecording() {
-        if (!cameraSwitchEnabled) return
-        val capture = videoCapture ?: return
-        val rawFile = File(cacheDir, "raw_${System.currentTimeMillis()}.mp4")
-        var pending = capture.output.prepareRecording(
+        val outputUri = FileProvider.getUriForFile(
             this,
-            FileOutputOptions.Builder(rawFile).build()
+            "$packageName.fileprovider",
+            captureFile
         )
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-        ) pending = pending.withAudioEnabled()
+        val baseIntent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
+            putExtra(MediaStore.EXTRA_OUTPUT, outputUri)
+            putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 1)
+            clipData = ClipData.newRawUri("MEDIA WAHID TV video", outputUri)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
 
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
-        setCameraSwitchAvailable(false)
-        recordButton.isRecording = true
-        actionText.text = "STOP"
-        timerText.visibility = View.VISIBLE
-        pauseResumeButton.text = "PAUSE"
-        pauseResumeButton.visibility = View.VISIBLE
-        isRecordingPaused = false
-        pausedAccumulatedMs = 0L
-        pauseStartedAt = 0L
-        recordingStartedAt = System.currentTimeMillis()
+        cameraLaunchInProgress = true
+        statusText.text = "Membuka kamera Samsung..."
 
-        activeRecording = pending.start(ContextCompat.getMainExecutor(this)) { event ->
-            when (event) {
-                is VideoRecordEvent.Start -> timerHandler.post(timerRunnable)
-                is VideoRecordEvent.Finalize -> {
-                    activeRecording = null
-                    timerHandler.removeCallbacks(timerRunnable)
-                    timerText.visibility = View.GONE
-                    pauseResumeButton.visibility = View.GONE
-                    pauseResumeButton.text = "PAUSE"
-                    isRecordingPaused = false
-                    pausedAccumulatedMs = 0L
-                    pauseStartedAt = 0L
-                    recordButton.isRecording = false
-                    actionText.text = "REKAM"
+        try {
+            cameraLauncher.launch(Intent(baseIntent).apply {
+                setPackage("com.sec.android.app.camera")
+            })
+        } catch (_: ActivityNotFoundException) {
+            launchGenericCamera(baseIntent, captureFile)
+        } catch (_: SecurityException) {
+            launchGenericCamera(baseIntent, captureFile)
+        }
+    }
 
-                    if (event.error != VideoRecordEvent.Finalize.ERROR_NONE) {
-                        rawFile.delete()
-                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-                        setCameraSwitchAvailable(true)
-                        Toast.makeText(this, "Rekaman gagal. Coba lagi.", Toast.LENGTH_LONG).show()
-                    } else processAndSave(rawFile)
+    private fun launchGenericCamera(baseIntent: Intent, captureFile: File) {
+        try {
+            cameraLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
+        } catch (_: Throwable) {
+            cameraLaunchInProgress = false
+            captureFile.delete()
+            currentCaptureFile = null
+            showReadyState("Aplikasi kamera tidak ditemukan")
+            Toast.makeText(
+                this,
+                "Kamera bawaan tidak bisa dibuka.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun copyReturnedVideoToCache(uri: Uri): File? {
+        return try {
+            val file = File(cacheDir, "returned_${System.currentTimeMillis()}.mp4")
+            contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().use { output ->
+                    input.copyTo(output)
                 }
-            }
+            } ?: return null
+            file.takeIf { it.length() > 0L }
+        } catch (_: Throwable) {
+            null
         }
     }
 
     private fun processAndSave(rawFile: File) {
         processingPanel.visibility = View.VISIBLE
-        setCameraSwitchAvailable(false)
+        openCameraButton.isEnabled = false
         val watermarked = File(cacheDir, "wahid_${System.currentTimeMillis()}.mp4")
 
         WatermarkExporter(this).export(
@@ -582,19 +302,27 @@ class MainActivity : ComponentActivity() {
             onCompleted = {
                 runOnUiThread {
                     rawFile.delete()
+                    currentCaptureFile = null
                     try {
                         saveToGallery(watermarked)
                         watermarked.delete()
                         processingPanel.visibility = View.GONE
-                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-                        setCameraSwitchAvailable(true)
-                        savedMessage.visibility = View.VISIBLE
-                        savedMessage.postDelayed({ savedMessage.visibility = View.GONE }, 1800)
+                        openCameraButton.isEnabled = true
+                        showReadyState("VIDEO TERSIMPAN ✓ • 2 logo sudah terpasang")
+                        Toast.makeText(
+                            this,
+                            "VIDEO TERSIMPAN ✓",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     } catch (_: Throwable) {
                         processingPanel.visibility = View.GONE
-                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-                        setCameraSwitchAvailable(true)
-                        Toast.makeText(this, "Video belum berhasil disimpan.", Toast.LENGTH_LONG).show()
+                        openCameraButton.isEnabled = true
+                        showReadyState("Video belum berhasil disimpan")
+                        Toast.makeText(
+                            this,
+                            "Video belum berhasil disimpan.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
             },
@@ -602,28 +330,49 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     rawFile.delete()
                     watermarked.delete()
+                    currentCaptureFile = null
                     processingPanel.visibility = View.GONE
-                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-                    setCameraSwitchAvailable(true)
-                    Toast.makeText(this, "Video belum berhasil disimpan.", Toast.LENGTH_LONG).show()
+                    openCameraButton.isEnabled = true
+                    showReadyState("Pemrosesan video gagal. Rekam ulang.")
+                    Toast.makeText(
+                        this,
+                        "Video belum berhasil diproses.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         )
     }
 
+    private fun showReadyState(message: String) {
+        statusText.text = message
+        openCameraButton.text = "REKAM LAGI"
+        openCameraButton.isEnabled = true
+    }
+
     private fun saveToGallery(file: File): Uri {
         val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "MEDIA_WAHID_TV_${System.currentTimeMillis()}.mp4")
+            put(
+                MediaStore.Video.Media.DISPLAY_NAME,
+                "MEDIA_WAHID_TV_${System.currentTimeMillis()}.mp4"
+            )
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/MEDIA WAHID TV")
+            put(
+                MediaStore.Video.Media.RELATIVE_PATH,
+                Environment.DIRECTORY_MOVIES + "/MEDIA WAHID TV"
+            )
             put(MediaStore.Video.Media.IS_PENDING, 1)
         }
 
-        val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
-            ?: error("Tidak dapat membuat file video")
+        val uri = contentResolver.insert(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            values
+        ) ?: error("Tidak dapat membuat file video")
 
         contentResolver.openOutputStream(uri)?.use { output ->
-            file.inputStream().use { input -> input.copyTo(output) }
+            file.inputStream().use { input ->
+                input.copyTo(output)
+            }
         } ?: error("Tidak dapat menulis video")
 
         values.clear()
@@ -636,7 +385,8 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, root).apply {
             hide(WindowInsetsCompat.Type.systemBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
@@ -644,41 +394,7 @@ class MainActivity : ComponentActivity() {
         (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
-        timerHandler.removeCallbacksAndMessages(null)
-        activeRecording?.close()
-        activeRecording = null
+        mainHandler.removeCallbacksAndMessages(null)
         super.onDestroy()
-    }
-}
-private class RecordButtonView(context: Context) : View(context) {
-    var isRecording: Boolean = false
-        set(value) {
-            field = value
-            invalidate()
-        }
-
-    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 7f * resources.displayMetrics.density
-        color = Color.WHITE
-    }
-    private val red = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(239, 47, 54)
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val cx = width / 2f
-        val cy = height / 2f
-        val r = minOf(width, height) * 0.43f
-        ring.color = if (isRecording) Color.rgb(239, 47, 54) else Color.WHITE
-        canvas.drawCircle(cx, cy, r, ring)
-
-        if (isRecording) {
-            val s = minOf(width, height) * 0.27f
-            canvas.drawRoundRect(cx - s, cy - s, cx + s, cy + s, s * 0.18f, s * 0.18f, red)
-        } else {
-            canvas.drawCircle(cx, cy, minOf(width, height) * 0.32f, red)
-        }
     }
 }
