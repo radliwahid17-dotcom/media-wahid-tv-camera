@@ -17,6 +17,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
+import android.view.ScaleGestureDetector
 import android.view.Surface
 import android.view.View
 import android.view.WindowManager
@@ -59,6 +60,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var actionText: TextView
     private lateinit var timerText: TextView
     private lateinit var switchCameraButton: TextView
+    private lateinit var zoomOutButton: TextView
+    private lateinit var zoomInButton: TextView
+    private lateinit var zoomText: TextView
     private lateinit var processingPanel: View
     private lateinit var savedMessage: TextView
 
@@ -67,6 +71,11 @@ class MainActivity : ComponentActivity() {
     private var recordingStartedAt = 0L
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var cameraSwitchEnabled = true
+    private var activeCamera: Camera? = null
+    private var currentZoomRatio = 1f
+    private var minZoomRatio = 1f
+    private var maxZoomRatio = 1f
+    private lateinit var scaleGestureDetector: ScaleGestureDetector
     private val timerHandler = Handler(Looper.getMainLooper())
 
     private val permissionsLauncher = registerForActivityResult(
@@ -112,6 +121,30 @@ class MainActivity : ComponentActivity() {
         switchCameraButton.setOnClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             switchCamera()
+        }
+
+        zoomOutButton.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            changeZoom(1f / 1.25f)
+        }
+
+        zoomInButton.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            changeZoom(1.25f)
+        }
+
+        scaleGestureDetector = ScaleGestureDetector(
+            this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    setZoom(currentZoomRatio * detector.scaleFactor)
+                    return true
+                }
+            }
+        )
+        previewView.setOnTouchListener { _, event ->
+            scaleGestureDetector.onTouchEvent(event)
+            true
         }
 
         requestPermissionsOrStart()
@@ -211,6 +244,34 @@ class MainActivity : ComponentActivity() {
             }
         )
 
+        val zoomControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        zoomOutButton = createSmallControlButton("−")
+        zoomText = TextView(this).apply {
+            text = "1.0×"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.argb(150, 0, 0, 0))
+        }
+        zoomInButton = createSmallControlButton("+")
+        zoomControls.addView(zoomOutButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        zoomControls.addView(zoomText, LinearLayout.LayoutParams(dp(62), dp(48)).apply {
+            marginStart = dp(6)
+            marginEnd = dp(6)
+        })
+        zoomControls.addView(zoomInButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        root.addView(
+            zoomControls,
+            FrameLayout.LayoutParams(-2, dp(48), Gravity.BOTTOM or Gravity.START).apply {
+                bottomMargin = dp(52)
+                marginStart = dp(20)
+            }
+        )
+
         val processing = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -256,6 +317,46 @@ class MainActivity : ComponentActivity() {
             PackageManager.PERMISSION_GRANTED
         if (camera && mic) bindCamera()
         else permissionsLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+    }
+
+    private fun createSmallControlButton(label: String): TextView =
+        TextView(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            textSize = 24f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(175, 0, 0, 0))
+                setStroke(dp(1), Color.argb(190, 255, 255, 255))
+            }
+        }
+
+    private fun changeZoom(multiplier: Float) {
+        setZoom(currentZoomRatio * multiplier)
+    }
+
+    private fun setZoom(ratio: Float) {
+        val camera = activeCamera ?: return
+        val target = ratio.coerceIn(minZoomRatio, maxZoomRatio)
+        currentZoomRatio = target
+        zoomText.text = String.format(Locale.US, "%.1f×", target)
+        camera.cameraControl.setZoomRatio(target)
+    }
+
+    private fun updateZoomBounds(camera: Camera) {
+        val state = camera.cameraInfo.zoomState.value
+        minZoomRatio = state?.minZoomRatio ?: 1f
+        maxZoomRatio = state?.maxZoomRatio ?: 1f
+        currentZoomRatio = 1f.coerceIn(minZoomRatio, maxZoomRatio)
+        zoomText.text = String.format(Locale.US, "%.1f×", currentZoomRatio)
+        zoomOutButton.isEnabled = maxZoomRatio > minZoomRatio
+        zoomInButton.isEnabled = maxZoomRatio > minZoomRatio
+        val alpha = if (maxZoomRatio > minZoomRatio) 1f else 0.45f
+        zoomOutButton.alpha = alpha
+        zoomInButton.alpha = alpha
+        camera.cameraControl.setZoomRatio(currentZoomRatio)
     }
 
     private fun switchCamera() {
@@ -332,6 +433,8 @@ class MainActivity : ComponentActivity() {
                 )
 
                 videoCapture = newVideoCapture
+                activeCamera = camera
+                updateZoomBounds(camera)
                 applyBrighterExposure(camera)
                 setCameraSwitchAvailable(true)
             } catch (_: Throwable) {
@@ -349,8 +452,8 @@ class MainActivity : ComponentActivity() {
         val step = exposureState.exposureCompensationStep.toFloat()
         if (step <= 0f) return
 
-        // Naik sekitar +0.7 EV: video lebih terang tanpa mendorong highlight terlalu keras.
-        val targetIndex = (0.7f / step)
+        // v1.5: dinaikkan lagi dari v1.4 agar kamera terasa jelas lebih terang.
+        val targetIndex = (1.2f / step)
             .roundToInt()
             .coerceIn(range.lower, range.upper)
 
