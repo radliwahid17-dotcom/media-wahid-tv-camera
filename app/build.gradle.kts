@@ -13,8 +13,8 @@ android {
         applicationId = "tv.mediawahid.camera"
         minSdk = 29
         targetSdk = 35
-        versionCode = 13
-        versionName = "2.4"
+        versionCode = 14
+        versionName = "2.5"
     }
 
     compileOptions {
@@ -58,18 +58,6 @@ val generateOriginalLogo by tasks.registering {
 }
 
 
-val generateMasjidLogo by tasks.registering {
-    doLast {
-        val sourceDir = file("src/main/masjid-logo-v4")
-        val encoded = (1..30).joinToString("") { index ->
-            file("$sourceDir/logo.part${index.toString().padStart(2, '0')}.b64").readText().trim()
-        }
-        val output = file("src/main/res/drawable-nodpi/masjid_raya_logo.jpg")
-        output.parentFile.mkdirs()
-        output.writeBytes(Base64.getDecoder().decode(encoded))
-    }
-}
-
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(generateOriginalLogo, generateMasjidLogo)
+    dependsOn(generateOriginalLogo)
 }
