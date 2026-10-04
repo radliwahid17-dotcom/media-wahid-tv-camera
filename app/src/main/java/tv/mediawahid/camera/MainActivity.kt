@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -27,6 +28,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -47,6 +49,7 @@ import androidx.media3.common.util.UnstableApi
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 @UnstableApi
 class MainActivity : ComponentActivity() {
@@ -55,12 +58,15 @@ class MainActivity : ComponentActivity() {
     private lateinit var recordButton: RecordButtonView
     private lateinit var actionText: TextView
     private lateinit var timerText: TextView
+    private lateinit var switchCameraButton: TextView
     private lateinit var processingPanel: View
     private lateinit var savedMessage: TextView
 
     private var videoCapture: VideoCapture<Recorder>? = null
     private var activeRecording: Recording? = null
     private var recordingStartedAt = 0L
+    private var lensFacing = CameraSelector.LENS_FACING_BACK
+    private var cameraSwitchEnabled = true
     private val timerHandler = Handler(Looper.getMainLooper())
 
     private val permissionsLauncher = registerForActivityResult(
@@ -102,6 +108,12 @@ class MainActivity : ComponentActivity() {
             it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             if (activeRecording == null) startRecording() else activeRecording?.stop()
         }
+
+        switchCameraButton.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            switchCamera()
+        }
+
         requestPermissionsOrStart()
     }
 
@@ -178,6 +190,27 @@ class MainActivity : ComponentActivity() {
             }
         )
 
+        switchCameraButton = TextView(this).apply {
+            text = "DEPAN"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(24).toFloat()
+                setColor(Color.argb(175, 0, 0, 0))
+                setStroke(dp(1), Color.argb(190, 255, 255, 255))
+            }
+        }
+        root.addView(
+            switchCameraButton,
+            FrameLayout.LayoutParams(dp(92), dp(48), Gravity.BOTTOM or Gravity.END).apply {
+                bottomMargin = dp(52)
+                marginEnd = dp(20)
+            }
+        )
+
         val processing = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -225,11 +258,52 @@ class MainActivity : ComponentActivity() {
         else permissionsLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
     }
 
+    private fun switchCamera() {
+        if (!cameraSwitchEnabled || activeRecording != null) return
+
+        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+            CameraSelector.LENS_FACING_FRONT
+        } else {
+            CameraSelector.LENS_FACING_BACK
+        }
+
+        updateSwitchCameraLabel()
+        bindCamera()
+    }
+
+    private fun updateSwitchCameraLabel() {
+        switchCameraButton.text = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+            "DEPAN"
+        } else {
+            "BELAKANG"
+        }
+    }
+
+    private fun setCameraSwitchAvailable(available: Boolean) {
+        cameraSwitchEnabled = available
+        switchCameraButton.isEnabled = available
+        switchCameraButton.alpha = if (available) 1f else 0.45f
+    }
+
     private fun bindCamera() {
+        setCameraSwitchAvailable(false)
+
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
             val provider = future.get()
             val rotation = previewView.display?.rotation ?: Surface.ROTATION_0
+            val selector = CameraSelector.Builder()
+                .requireLensFacing(lensFacing)
+                .build()
+
+            if (!provider.hasCamera(selector)) {
+                lensFacing = CameraSelector.LENS_FACING_BACK
+                updateSwitchCameraLabel()
+                setCameraSwitchAvailable(true)
+                Toast.makeText(this, "Kamera tersebut tidak tersedia.", Toast.LENGTH_LONG).show()
+                return@addListener
+            }
+
             val preview = Preview.Builder()
                 .setTargetRotation(rotation)
                 .build()
@@ -244,25 +318,47 @@ class MainActivity : ComponentActivity() {
                 )
                 .build()
 
-            videoCapture = VideoCapture.withOutput(recorder).also {
+            val newVideoCapture = VideoCapture.withOutput(recorder).also {
                 it.targetRotation = rotation
             }
 
             try {
                 provider.unbindAll()
-                provider.bindToLifecycle(
+                val camera = provider.bindToLifecycle(
                     this,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    selector,
                     preview,
-                    videoCapture
+                    newVideoCapture
                 )
+
+                videoCapture = newVideoCapture
+                applyBrighterExposure(camera)
+                setCameraSwitchAvailable(true)
             } catch (_: Throwable) {
+                setCameraSwitchAvailable(true)
                 Toast.makeText(this, "Kamera tidak bisa dibuka.", Toast.LENGTH_LONG).show()
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private fun applyBrighterExposure(camera: Camera) {
+        val exposureState = camera.cameraInfo.exposureState
+        if (!exposureState.isExposureCompensationSupported) return
+
+        val range = exposureState.exposureCompensationRange
+        val step = exposureState.exposureCompensationStep.toFloat()
+        if (step <= 0f) return
+
+        // Naik sekitar +0.7 EV: video lebih terang tanpa mendorong highlight terlalu keras.
+        val targetIndex = (0.7f / step)
+            .roundToInt()
+            .coerceIn(range.lower, range.upper)
+
+        camera.cameraControl.setExposureCompensationIndex(targetIndex)
+    }
+
     private fun startRecording() {
+        if (!cameraSwitchEnabled) return
         val capture = videoCapture ?: return
         val rawFile = File(cacheDir, "raw_${System.currentTimeMillis()}.mp4")
         var pending = capture.output.prepareRecording(
@@ -275,6 +371,7 @@ class MainActivity : ComponentActivity() {
         ) pending = pending.withAudioEnabled()
 
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        setCameraSwitchAvailable(false)
         recordButton.isRecording = true
         actionText.text = "STOP"
         timerText.visibility = View.VISIBLE
@@ -293,6 +390,7 @@ class MainActivity : ComponentActivity() {
                     if (event.error != VideoRecordEvent.Finalize.ERROR_NONE) {
                         rawFile.delete()
                         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                        setCameraSwitchAvailable(true)
                         Toast.makeText(this, "Rekaman gagal. Coba lagi.", Toast.LENGTH_LONG).show()
                     } else processAndSave(rawFile)
                 }
@@ -302,6 +400,7 @@ class MainActivity : ComponentActivity() {
 
     private fun processAndSave(rawFile: File) {
         processingPanel.visibility = View.VISIBLE
+        setCameraSwitchAvailable(false)
         val watermarked = File(cacheDir, "wahid_${System.currentTimeMillis()}.mp4")
 
         WatermarkExporter(this).export(
@@ -315,11 +414,13 @@ class MainActivity : ComponentActivity() {
                         watermarked.delete()
                         processingPanel.visibility = View.GONE
                         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                        setCameraSwitchAvailable(true)
                         savedMessage.visibility = View.VISIBLE
                         savedMessage.postDelayed({ savedMessage.visibility = View.GONE }, 1800)
                     } catch (_: Throwable) {
                         processingPanel.visibility = View.GONE
                         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                        setCameraSwitchAvailable(true)
                         Toast.makeText(this, "Video belum berhasil disimpan.", Toast.LENGTH_LONG).show()
                     }
                 }
@@ -330,6 +431,7 @@ class MainActivity : ComponentActivity() {
                     watermarked.delete()
                     processingPanel.visibility = View.GONE
                     requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                    setCameraSwitchAvailable(true)
                     Toast.makeText(this, "Video belum berhasil disimpan.", Toast.LENGTH_LONG).show()
                 }
             }
