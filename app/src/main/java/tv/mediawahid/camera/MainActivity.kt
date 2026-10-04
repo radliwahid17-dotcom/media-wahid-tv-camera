@@ -131,29 +131,14 @@ class MainActivity : ComponentActivity() {
         }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
-        val logoRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-
-        val masjidLogo = ImageView(this).apply {
-            setImageResource(R.drawable.masjid_raya_logo)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-        }
         val mediaLogo = ImageView(this).apply {
             setImageResource(R.drawable.media_wahid_logo_original)
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
-
-        logoRow.addView(
-            masjidLogo,
-            LinearLayout.LayoutParams(0, dp(86), 1f).apply { marginEnd = dp(8) }
-        )
-        logoRow.addView(
+        content.addView(
             mediaLogo,
-            LinearLayout.LayoutParams(0, dp(86), 1f).apply { marginStart = dp(8) }
+            LinearLayout.LayoutParams(-1, dp(86))
         )
-        content.addView(logoRow, LinearLayout.LayoutParams(-1, dp(86)))
 
         content.addView(TextView(this).apply {
             text = "MEDIA WAHID TV CAMERA"
@@ -165,7 +150,7 @@ class MainActivity : ComponentActivity() {
         }, LinearLayout.LayoutParams(-1, -2))
 
         content.addView(TextView(this).apply {
-            text = "Kamera Samsung • Video & Foto • 2 logo otomatis"
+            text = "Kamera Samsung • Video & Foto • logo otomatis"
             setTextColor(Color.rgb(181, 186, 194))
             textSize = 14f
             gravity = Gravity.CENTER
@@ -223,7 +208,7 @@ class MainActivity : ComponentActivity() {
         })
 
         statusText = TextView(this).apply {
-            text = "Selesai ambil gambar → 2 logo dipasang otomatis"
+            text = "Selesai ambil gambar → logo MEDIA WAHID TV dipasang otomatis"
             setTextColor(Color.rgb(150, 157, 168))
             textSize = 12f
             gravity = Gravity.CENTER
@@ -250,7 +235,7 @@ class MainActivity : ComponentActivity() {
             addView(processingTitle)
 
             addView(TextView(this@MainActivity).apply {
-                text = "Memasang logo Masjid Raya + MEDIA WAHID TV"
+                text = "Memasang logo MEDIA WAHID TV"
                 setTextColor(Color.rgb(180, 186, 195))
                 textSize = 13f
                 gravity = Gravity.CENTER
@@ -405,7 +390,7 @@ class MainActivity : ComponentActivity() {
                         saveVideoToGallery(watermarked)
                         watermarked.delete()
                         setProcessing(isVideo = true, visible = false)
-                        showReadyState("VIDEO TERSIMPAN ✓ • 2 logo sudah terpasang")
+                        showReadyState("VIDEO TERSIMPAN ✓ • logo MEDIA WAHID TV terpasang")
                         Toast.makeText(this, "VIDEO TERSIMPAN ✓", Toast.LENGTH_SHORT).show()
                     } catch (_: Throwable) {
                         setProcessing(isVideo = true, visible = false)
@@ -440,7 +425,7 @@ class MainActivity : ComponentActivity() {
                         saveVideoToGallery(watermarked)
                         watermarked.delete()
                         setProcessing(isVideo = true, visible = false)
-                        showReadyState("VIDEO TERSIMPAN ✓ • 2 logo sudah terpasang")
+                        showReadyState("VIDEO TERSIMPAN ✓ • logo MEDIA WAHID TV terpasang")
                         Toast.makeText(this, "VIDEO TERSIMPAN ✓", Toast.LENGTH_SHORT).show()
                     } catch (_: Throwable) {
                         setProcessing(isVideo = true, visible = false)
@@ -477,7 +462,7 @@ class MainActivity : ComponentActivity() {
                         savePhotoToGallery(watermarked)
                         watermarked.delete()
                         setProcessing(isVideo = false, visible = false)
-                        showReadyState("FOTO TERSIMPAN ✓ • 2 logo sudah terpasang")
+                        showReadyState("FOTO TERSIMPAN ✓ • logo MEDIA WAHID TV terpasang")
                         Toast.makeText(this, "FOTO TERSIMPAN ✓", Toast.LENGTH_SHORT).show()
                     } catch (_: Throwable) {
                         watermarked.delete()
