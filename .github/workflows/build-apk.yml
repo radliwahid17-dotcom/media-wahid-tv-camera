@@ -25,6 +25,9 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      - name: Verify original logo asset
+        run: echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
+
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
 
