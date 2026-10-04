@@ -37,7 +37,7 @@ jobs:
         run: |
           test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
           echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
-          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "3520"
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "14456"
 
           cat > /tmp/VerifyImage.java <<'EOF'
           import javax.imageio.ImageIO;
@@ -135,12 +135,12 @@ jobs:
           PY
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.4-DUAL-TEMPLATE.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.5-DUAL-TEMPLATE.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE
-          path: MEDIA-WAHID-TV-Camera-v4.0.4-DUAL-TEMPLATE.apk
+          path: MEDIA-WAHID-TV-Camera-v4.0.5-DUAL-TEMPLATE.apk
           if-no-files-found: error
           retention-days: 30
