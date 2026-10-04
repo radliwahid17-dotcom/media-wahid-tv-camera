@@ -37,7 +37,7 @@ jobs:
         run: |
           test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
           echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
-          test -s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "3520"
 
           cat > /tmp/VerifyImage.java <<'EOF'
           import javax.imageio.ImageIO;
@@ -56,6 +56,9 @@ jobs:
           java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
           java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
 
+          ffmpeg -v error -xerror -i app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg -frames:v 1 -f null -
+          ffmpeg -v error -xerror -i app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg -frames:v 1 -f null -
+
       - name: Build and lint
         run: gradle --no-daemon :app:assembleDebug :app:lintDebug
 
@@ -70,6 +73,9 @@ jobs:
           java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg
           java /tmp/VerifyImage.java /tmp/masjid_raya_logo.jpg
 
+          ffmpeg -v error -xerror -i /tmp/media_wahid_logo_original.jpg -frames:v 1 -f null -
+          ffmpeg -v error -xerror -i /tmp/masjid_raya_logo.jpg -frames:v 1 -f null -
+
       - name: Verify dual-template code is packaged
         run: |
           grep -R "enum class WatermarkTemplate" app/src/main/java/tv/mediawahid/camera/WatermarkTemplate.kt
@@ -77,11 +83,11 @@ jobs:
           grep -R "WatermarkTemplate.MEDIA_ONLY" app/src/main/java/tv/mediawahid/camera
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.1-DUAL-TEMPLATE.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.2-DUAL-TEMPLATE.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE
-          path: MEDIA-WAHID-TV-Camera-v4.0.1-DUAL-TEMPLATE.apk
+          path: MEDIA-WAHID-TV-Camera-v4.0.2-DUAL-TEMPLATE.apk
           retention-days: 30
