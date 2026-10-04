@@ -31,7 +31,7 @@ class PhotoWatermarker(private val context: Context) {
 
         val mediaLogo = BitmapFactory.decodeResource(
             context.resources,
-            R.drawable.media_wahid_logo_original,
+            R.drawable.media_wahid_logo,
             BitmapFactory.Options().apply { inScaled = false }
         ) ?: error("Logo MEDIA WAHID TV tidak dapat dibaca")
 
