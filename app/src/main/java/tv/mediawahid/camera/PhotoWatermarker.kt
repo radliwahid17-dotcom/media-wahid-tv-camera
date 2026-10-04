@@ -35,12 +35,6 @@ class PhotoWatermarker(private val context: Context) {
             BitmapFactory.Options().apply { inScaled = false }
         ) ?: error("Logo MEDIA WAHID TV tidak dapat dibaca")
 
-        val masjidLogo = BitmapFactory.decodeResource(
-            context.resources,
-            R.drawable.masjid_raya_logo,
-            BitmapFactory.Options().apply { inScaled = false }
-        ) ?: error("Logo Masjid Raya tidak dapat dibaca")
-
         val result = Bitmap.createBitmap(
             photo.width,
             photo.height,
@@ -56,25 +50,14 @@ class PhotoWatermarker(private val context: Context) {
         val marginX = (result.width * 0.025f).roundToInt()
         val marginY = (result.height * 0.02f).roundToInt()
 
-        // Ukuran visual sama untuk kedua logo.
         val targetWidth = (result.width * 0.24f).roundToInt()
-            .coerceAtMost((result.width - marginX * 3) / 2)
+            .coerceAtMost(result.width - marginX * 2)
             .coerceAtLeast(1)
 
-        fun logoHeight(bitmap: Bitmap): Int =
-            (targetWidth * bitmap.height.toFloat() / bitmap.width.toFloat())
+        val mediaHeight =
+            (targetWidth * mediaLogo.height.toFloat() / mediaLogo.width.toFloat())
                 .roundToInt()
                 .coerceAtLeast(1)
-
-        val masjidHeight = logoHeight(masjidLogo)
-        val mediaHeight = logoHeight(mediaLogo)
-
-        val masjidDest = android.graphics.Rect(
-            marginX,
-            marginY,
-            marginX + targetWidth,
-            marginY + masjidHeight
-        )
 
         val mediaDest = android.graphics.Rect(
             result.width - marginX - targetWidth,
@@ -83,12 +66,6 @@ class PhotoWatermarker(private val context: Context) {
             marginY + mediaHeight
         )
 
-        canvas.drawBitmap(
-            masjidLogo,
-            null,
-            masjidDest,
-            paint
-        )
         canvas.drawBitmap(
             mediaLogo,
             null,
@@ -105,6 +82,5 @@ class PhotoWatermarker(private val context: Context) {
         photo.recycle()
         result.recycle()
         mediaLogo.recycle()
-        masjidLogo.recycle()
     }
 }
