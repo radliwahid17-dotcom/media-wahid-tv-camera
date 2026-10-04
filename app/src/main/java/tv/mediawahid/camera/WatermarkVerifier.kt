@@ -104,25 +104,19 @@ object WatermarkVerifier {
     private fun hasBrandPatternInCorner(bitmap: Bitmap): Boolean {
         if (bitmap.width < 40 || bitmap.height < 40) return false
 
+        // Watermark resmi selalu berada di kanan atas.
+        // Verifikasi hanya area target agar konten video/foto di sudut lain
+        // tidak pernah bisa memicu false-positive.
         val regionWidth = (bitmap.width * 0.38f).roundToInt().coerceAtLeast(1)
         val regionHeight = (bitmap.height * 0.32f).roundToInt().coerceAtLeast(1)
 
-        val corners = listOf(
-            intArrayOf(bitmap.width - regionWidth, 0, bitmap.width, regionHeight),
-            intArrayOf(0, 0, regionWidth, regionHeight),
-            intArrayOf(bitmap.width - regionWidth, bitmap.height - regionHeight, bitmap.width, bitmap.height),
-            intArrayOf(0, bitmap.height - regionHeight, regionWidth, bitmap.height)
+        return hasBrandPattern(
+            bitmap,
+            (bitmap.width - regionWidth).coerceAtLeast(0),
+            0,
+            bitmap.width,
+            regionHeight.coerceAtMost(bitmap.height)
         )
-
-        return corners.any { region ->
-            hasBrandPattern(
-                bitmap,
-                region[0].coerceAtLeast(0),
-                region[1].coerceAtLeast(0),
-                region[2].coerceAtMost(bitmap.width),
-                region[3].coerceAtMost(bitmap.height)
-            )
-        }
     }
 
     private fun hasBrandPattern(
