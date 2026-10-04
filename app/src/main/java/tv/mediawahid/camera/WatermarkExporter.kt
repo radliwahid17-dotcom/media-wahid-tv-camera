@@ -229,9 +229,9 @@ class WatermarkExporter(private val context: Context) {
                 rawWidth
             }
 
-            (displayWidth * 0.24f)
+            (displayWidth * 0.20f)
                 .roundToInt()
-                .coerceIn(180, 900)
+                .coerceIn(180, 620)
         } catch (_: Throwable) {
             260
         } finally {
