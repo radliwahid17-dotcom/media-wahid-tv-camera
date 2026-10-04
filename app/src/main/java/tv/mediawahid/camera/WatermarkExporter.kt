@@ -13,6 +13,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.StaticOverlaySettings
+import androidx.media3.effect.TextureOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
@@ -72,7 +73,7 @@ class WatermarkExporter(private val context: Context) {
             masjidLogoSource.recycle()
         }
 
-        val overlays = mutableListOf<BitmapOverlay>()
+        val overlays = mutableListOf<TextureOverlay>()
 
         if (masjidLogo != null) {
             val masjidSettings = StaticOverlaySettings.Builder()
