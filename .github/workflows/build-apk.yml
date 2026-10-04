@@ -25,6 +25,12 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      - name: Reconstruct final Masjid logo
+        run: |
+          cat app/src/main/logo-source/masjid_final.part*.b64 | tr -d '\\n\\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "8690"
+          echo "667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg" | sha256sum -c -
+
       - name: Reject obsolete logo source folders
         run: |
           test ! -d app/src/main/masjid-logo-source
@@ -37,7 +43,7 @@ jobs:
         run: |
           test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
           echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
-          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "5868"
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "8690"
 
           cat > /tmp/VerifyImage.java <<'EOF'
           import javax.imageio.ImageIO;
@@ -88,7 +94,7 @@ jobs:
                           + " red=" + red
                           + " blue=" + blue
                       );
-                      if (dark < 1200 || green < 20 || orange < 20) {
+                      if (dark < 1200 || green < 100 || orange < 100 || white < 30000) {
                           throw new IllegalStateException("Signature logo Masjid tidak valid");
                       }
                   } else {
@@ -116,6 +122,8 @@ jobs:
 
           test -s /tmp/media_wahid_logo_original.jpg
           test -s /tmp/masjid_raya_logo.jpg
+          test "$(stat -c%s /tmp/masjid_raya_logo.jpg)" = "8690"
+          echo "667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5  /tmp/masjid_raya_logo.jpg" | sha256sum -c -
 
           java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg media
           java /tmp/VerifyImage.java /tmp/masjid_raya_logo.jpg masjid
