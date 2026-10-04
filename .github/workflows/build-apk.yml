@@ -36,12 +36,12 @@ jobs:
 
       - name: Reconstruct Masjid logo
         run: |
-          cat app/src/main/masjid-logo-source/logo.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
+          cat app/src/main/masjid-logo-v3/logo.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
 
       - name: Verify Masjid logo asset
         run: |
-          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "13164"
-          echo "1b91d6a8da3aa179955887601267064dc0e2a833e029f938149dd82db8d2f8e8  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg" | sha256sum -c -
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "3520"
+          echo "6e6ede4fe32b0836701cbd360a1ceda1a30734ac9ecbf993f6afc0efe68feed4  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg" | sha256sum -c -
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
