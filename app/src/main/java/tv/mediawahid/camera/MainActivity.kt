@@ -21,6 +21,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
@@ -45,31 +46,26 @@ class MainActivity : ComponentActivity() {
 
     private val videoLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { result ->
+    ) {
+        // Full Samsung Camera mode intentionally does not return the recorded
+        // file to us. Once the user exits the camera, open Android's video
+        // picker so the just-recorded full-quality file can be watermarked.
         cameraLaunchInProgress = false
+        statusText.text = "Pilih video yang baru direkam..."
+        videoPickerLauncher.launch(
+            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+        )
+    }
 
-        val captureFile = currentVideoFile
-        val returnedUri = result.data?.data
-
-        val usableFile = when {
-            captureFile != null && captureFile.exists() && captureFile.length() > 0L -> captureFile
-            returnedUri != null -> copyReturnedFileToCache(returnedUri, "returned_video", "mp4")
-            else -> null
+    private val videoPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri == null) {
+            showReadyState("Video belum dipilih")
+            return@registerForActivityResult
         }
 
-        if (usableFile != null && usableFile.exists() && usableFile.length() > 0L) {
-            processAndSaveVideo(usableFile)
-        } else {
-            captureFile?.delete()
-            currentVideoFile = null
-            showReadyState(
-                if (result.resultCode == Activity.RESULT_CANCELED) {
-                    "Rekaman dibatalkan"
-                } else {
-                    "Video belum diterima. Coba rekam lagi."
-                }
-            )
-        }
+        processAndSaveVideo(uri)
     }
 
     private val photoLauncher = registerForActivityResult(
@@ -268,33 +264,42 @@ class MainActivity : ComponentActivity() {
     private fun launchSamsungVideo() {
         if (cameraLaunchInProgress) return
 
-        val capturesDir = File(cacheDir, "captures").apply { mkdirs() }
-        val captureFile = File(capturesDir, "samsung_video_${System.currentTimeMillis()}.mp4")
         currentVideoFile?.delete()
-        currentVideoFile = captureFile
-
-        val outputUri = FileProvider.getUriForFile(
-            this,
-            "$packageName.fileprovider",
-            captureFile
-        )
-
-        val baseIntent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
-            putExtra(MediaStore.EXTRA_OUTPUT, outputUri)
-            putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 1)
-            // Samsung external capture can apply a short default limit unless
-            // the caller explicitly requests a longer recording duration.
-            // Six hours is intentionally well above the normal 50-minute use case.
-            putExtra(MediaStore.EXTRA_DURATION_LIMIT, 6 * 60 * 60)
-            clipData = ClipData.newRawUri("MEDIA WAHID TV video", outputUri)
-            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
+        currentVideoFile = null
         cameraLaunchInProgress = true
-        statusText.text = "Membuka video Samsung..."
+        statusText.text = "Samsung Camera full • rekam bebas, lalu kembali ke app"
 
-        launchPreferredSamsungCamera(baseIntent, captureFile, isVideo = true)
+        val baseIntent = Intent(MediaStore.INTENT_ACTION_VIDEO_CAMERA)
+
+        try {
+            videoLauncher.launch(Intent(baseIntent).apply {
+                setPackage("com.sec.android.app.camera")
+            })
+        } catch (_: ActivityNotFoundException) {
+            try {
+                videoLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
+            } catch (_: Throwable) {
+                cameraLaunchInProgress = false
+                showReadyState("Aplikasi kamera video tidak ditemukan")
+                Toast.makeText(
+                    this,
+                    "Kamera video bawaan tidak bisa dibuka.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        } catch (_: SecurityException) {
+            try {
+                videoLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
+            } catch (_: Throwable) {
+                cameraLaunchInProgress = false
+                showReadyState("Aplikasi kamera video tidak ditemukan")
+                Toast.makeText(
+                    this,
+                    "Kamera video bawaan tidak bisa dibuka.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     private fun launchSamsungPhoto() {
@@ -385,6 +390,39 @@ class MainActivity : ComponentActivity() {
         processingPanel.visibility = if (visible) View.VISIBLE else View.GONE
         videoButton.isEnabled = !visible
         photoButton.isEnabled = !visible
+    }
+
+    private fun processAndSaveVideo(inputUri: Uri) {
+        setProcessing(isVideo = true, visible = true)
+        val watermarked = File(cacheDir, "wahid_${System.currentTimeMillis()}.mp4")
+
+        WatermarkExporter(this).export(
+            inputUri = inputUri,
+            output = watermarked,
+            onCompleted = {
+                runOnUiThread {
+                    try {
+                        saveVideoToGallery(watermarked)
+                        watermarked.delete()
+                        setProcessing(isVideo = true, visible = false)
+                        showReadyState("VIDEO TERSIMPAN ✓ • 2 logo sudah terpasang")
+                        Toast.makeText(this, "VIDEO TERSIMPAN ✓", Toast.LENGTH_SHORT).show()
+                    } catch (_: Throwable) {
+                        setProcessing(isVideo = true, visible = false)
+                        showReadyState("Video belum berhasil disimpan")
+                        Toast.makeText(this, "Video belum berhasil disimpan.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onError = {
+                runOnUiThread {
+                    watermarked.delete()
+                    setProcessing(isVideo = true, visible = false)
+                    showReadyState("Pemrosesan video gagal. Coba pilih ulang.")
+                    Toast.makeText(this, "Video belum berhasil diproses.", Toast.LENGTH_LONG).show()
+                }
+            }
+        )
     }
 
     private fun processAndSaveVideo(rawFile: File) {
