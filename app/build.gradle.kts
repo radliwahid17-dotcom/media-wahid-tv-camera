@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -51,7 +53,7 @@ val generateOriginalLogo by tasks.registering {
         }
         val output = file("src/main/res/drawable-nodpi/media_wahid_logo_original.jpg")
         output.parentFile.mkdirs()
-        output.writeBytes(java.util.Base64.getDecoder().decode(encoded))
+        output.writeBytes(Base64.getDecoder().decode(encoded))
     }
 }
 
