@@ -27,6 +27,18 @@ class WatermarkExporter(private val context: Context) {
         output: File,
         onCompleted: () -> Unit,
         onError: (Throwable) -> Unit,
+    ) = export(
+        inputUri = Uri.fromFile(input),
+        output = output,
+        onCompleted = onCompleted,
+        onError = onError,
+    )
+
+    fun export(
+        inputUri: Uri,
+        output: File,
+        onCompleted: () -> Unit,
+        onError: (Throwable) -> Unit,
     ) {
         if (output.exists()) output.delete()
 
@@ -69,7 +81,7 @@ class WatermarkExporter(private val context: Context) {
         val overlayEffect = OverlayEffect(listOf(masjidOverlay, mediaOverlay))
 
         val editedMediaItem = EditedMediaItem.Builder(
-            MediaItem.fromUri(Uri.fromFile(input))
+            MediaItem.fromUri(inputUri)
         )
             .setEffects(Effects(emptyList(), listOf(overlayEffect)))
             .build()
