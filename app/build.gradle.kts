@@ -1,5 +1,3 @@
-import java.util.Base64
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,8 +11,8 @@ android {
         applicationId = "tv.mediawahid.camera"
         minSdk = 29
         targetSdk = 35
-        versionCode = 14
-        versionName = "2.5"
+        versionCode = 15
+        versionName = "2.6"
     }
 
     compileOptions {
@@ -42,22 +40,4 @@ dependencies {
     implementation("androidx.media3:media3-common:$media3")
     implementation("androidx.media3:media3-transformer:$media3")
     implementation("androidx.media3:media3-effect:$media3")
-}
-
-
-val generateOriginalLogo by tasks.registering {
-    doLast {
-        val sourceDir = file("src/main/logo-source")
-        val encoded = (1..5).joinToString("") { index ->
-            file("$sourceDir/logo.part$index.b64").readText().trim()
-        }
-        val output = file("src/main/res/drawable-nodpi/media_wahid_logo_original.jpg")
-        output.parentFile.mkdirs()
-        output.writeBytes(Base64.getDecoder().decode(encoded))
-    }
-}
-
-
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(generateOriginalLogo)
 }
