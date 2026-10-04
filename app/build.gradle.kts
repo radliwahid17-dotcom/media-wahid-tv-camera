@@ -11,8 +11,8 @@ android {
         applicationId = "tv.mediawahid.camera"
         minSdk = 29
         targetSdk = 35
-        versionCode = 18
-        versionName = "3.0.1"
+        versionCode = 19
+        versionName = "3.0.2"
     }
 
     compileOptions {
