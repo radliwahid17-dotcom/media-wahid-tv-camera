@@ -41,23 +41,62 @@ jobs:
 
           cat > /tmp/VerifyImage.java <<'EOF'
           import javax.imageio.ImageIO;
+          import java.awt.image.BufferedImage;
           import java.io.File;
+
           public class VerifyImage {
               public static void main(String[] args) throws Exception {
-                  var image = ImageIO.read(new File(args[0]));
-                  if (image == null || image.getWidth() < 50 || image.getHeight() < 50) {
-                      throw new IllegalStateException("Logo gagal di-decode: " + args[0]);
+                  BufferedImage image = ImageIO.read(new File(args[0]));
+                  if (image == null || image.getWidth() != 303 || image.getHeight() != 174) {
+                      throw new IllegalStateException("Logo gagal di-decode atau dimensi salah: " + args[0]);
                   }
-                  System.out.println(args[0] + " -> " + image.getWidth() + "x" + image.getHeight());
+
+                  int red = 0;
+                  int blue = 0;
+                  int white = 0;
+                  int dark = 0;
+                  int green = 0;
+                  int orange = 0;
+
+                  for (int y = 0; y < image.getHeight(); y++) {
+                      for (int x = 0; x < image.getWidth(); x++) {
+                          int rgb = image.getRGB(x, y);
+                          int r = (rgb >> 16) & 0xff;
+                          int g = (rgb >> 8) & 0xff;
+                          int b = rgb & 0xff;
+
+                          if (r > 150 && r > g * 1.20 && r > b * 1.10) red++;
+                          if (b > 90 && b > r * 1.10 && b > g * 1.01) blue++;
+                          if (r > 215 && g > 215 && b > 215) white++;
+                          if (r < 55 && g < 55 && b < 55) dark++;
+                          if (g > 70 && g > r * 1.12 && g > b * 1.08) green++;
+                          if (r > 160 && g > 55 && g < 180 && b < 90) orange++;
+                      }
+                  }
+
+                  String kind = args[1];
+                  if ("media".equals(kind)) {
+                      if (red < 20 || blue < 20 || white < 1000) {
+                          throw new IllegalStateException("Signature MEDIA WAHID TV tidak valid");
+                      }
+                  } else if ("masjid".equals(kind)) {
+                      if (dark < 2000 || green < 20 || orange < 20) {
+                          throw new IllegalStateException("Signature logo Masjid tidak valid");
+                      }
+                  } else {
+                      throw new IllegalArgumentException("Jenis logo tidak dikenal");
+                  }
+
+                  System.out.println(
+                      args[0] + " -> " + image.getWidth() + "x" + image.getHeight()
+                      + " signature OK"
+                  );
               }
           }
           EOF
 
-          java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
-          java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
-
-          ffmpeg -v error -xerror -i app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg -frames:v 1 -f null -
-          ffmpeg -v error -xerror -i app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg -frames:v 1 -f null -
+          java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg media
+          java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg masjid
 
       - name: Build and lint
         run: gradle --no-daemon :app:assembleDebug :app:lintDebug
@@ -70,11 +109,8 @@ jobs:
           test -s /tmp/media_wahid_logo_original.jpg
           test -s /tmp/masjid_raya_logo.jpg
 
-          java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg
-          java /tmp/VerifyImage.java /tmp/masjid_raya_logo.jpg
-
-          ffmpeg -v error -xerror -i /tmp/media_wahid_logo_original.jpg -frames:v 1 -f null -
-          ffmpeg -v error -xerror -i /tmp/masjid_raya_logo.jpg -frames:v 1 -f null -
+          java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg media
+          java /tmp/VerifyImage.java /tmp/masjid_raya_logo.jpg masjid
 
       - name: Verify dual-template code is packaged
         run: |
@@ -83,11 +119,11 @@ jobs:
           grep -R "WatermarkTemplate.MEDIA_ONLY" app/src/main/java/tv/mediawahid/camera
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.2-DUAL-TEMPLATE.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.3-DUAL-TEMPLATE.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE
-          path: MEDIA-WAHID-TV-Camera-v4.0.2-DUAL-TEMPLATE.apk
+          path: MEDIA-WAHID-TV-Camera-v4.0.3-DUAL-TEMPLATE.apk
           retention-days: 30
