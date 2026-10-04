@@ -34,14 +34,10 @@ jobs:
           test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
           echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
 
-      - name: Reconstruct Masjid logo
-        run: |
-          cat app/src/main/masjid-logo-v3/logo.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
-
       - name: Verify Masjid logo asset
         run: |
-          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "3520"
-          echo "6e6ede4fe32b0836701cbd360a1ceda1a30734ac9ecbf993f6afc0efe68feed4  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg" | sha256sum -c -
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "13310"
+          echo "d87d514b239e6db7267d032777aeaa054549d9d5c39752fc4d9b5c65e8c14d8f  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg" | sha256sum -c -
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
