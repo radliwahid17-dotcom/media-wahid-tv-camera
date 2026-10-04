@@ -58,9 +58,10 @@ class PhotoWatermarker(private val context: Context) {
             val marginX = (result.width * 0.03f).roundToInt().coerceAtLeast(12)
             val marginY = (result.height * 0.025f).roundToInt().coerceAtLeast(12)
 
-            val desiredWidth = (result.width * 0.24f).roundToInt()
+            val desiredWidth = (result.width * 0.20f).roundToInt()
             val targetWidth = desiredWidth
                 .coerceAtLeast((result.width * 0.18f).roundToInt())
+                .coerceAtMost(620)
                 .coerceAtMost(result.width - marginX * 2)
                 .coerceAtLeast(1)
 
