@@ -12,7 +12,11 @@ import kotlin.math.roundToInt
 
 class PhotoWatermarker(private val context: Context) {
 
-    fun process(input: File, output: File) {
+    fun process(
+        input: File,
+        output: File,
+        template: WatermarkTemplate
+    ) {
         if (output.exists()) output.delete()
 
         val source = ImageDecoder.createSource(input)
@@ -29,16 +33,21 @@ class PhotoWatermarker(private val context: Context) {
             }
         }
 
-        val mediaLogo = BitmapFactory.decodeResource(
-            context.resources,
-            R.drawable.media_wahid_logo_original,
-            BitmapFactory.Options().apply {
-                inScaled = false
-                inPreferredConfig = Bitmap.Config.ARGB_8888
+        val mediaLogo = decodeLogo(R.drawable.media_wahid_logo_original)
+            ?: run {
+                photo.recycle()
+                error("Logo MEDIA WAHID TV tidak dapat dibaca")
             }
-        ) ?: run {
-            photo.recycle()
-            error("Logo MEDIA WAHID TV tidak dapat dibaca")
+
+        val masjidLogo = if (template == WatermarkTemplate.DUAL) {
+            decodeLogo(R.drawable.masjid_raya_logo)
+                ?: run {
+                    photo.recycle()
+                    mediaLogo.recycle()
+                    error("Logo Masjid tidak dapat dibaca")
+                }
+        } else {
+            null
         }
 
         val result = Bitmap.createBitmap(
@@ -55,29 +64,29 @@ class PhotoWatermarker(private val context: Context) {
                 alpha = 255
             }
 
-            val marginX = (result.width * 0.03f).roundToInt().coerceAtLeast(12)
-            val marginY = (result.height * 0.025f).roundToInt().coerceAtLeast(12)
+            val targetWidth = WatermarkGeometry.targetWidth(result.width, template)
 
-            val desiredWidth = (result.width * 0.20f).roundToInt()
-            val targetWidth = desiredWidth
-                .coerceAtLeast((result.width * 0.18f).roundToInt())
-                .coerceAtMost(620)
-                .coerceAtMost(result.width - marginX * 2)
-                .coerceAtLeast(1)
-
-            val targetHeight =
-                (targetWidth * mediaLogo.height.toFloat() / mediaLogo.width.toFloat())
-                    .roundToInt()
-                    .coerceAtLeast(1)
-
-            val mediaDest = android.graphics.Rect(
-                result.width - marginX - targetWidth,
-                marginY,
-                result.width - marginX,
-                marginY + targetHeight
+            drawLogo(
+                canvas = canvas,
+                frameWidth = result.width,
+                frameHeight = result.height,
+                logo = mediaLogo,
+                targetWidth = targetWidth,
+                right = true,
+                paint = paint
             )
 
-            canvas.drawBitmap(mediaLogo, null, mediaDest, paint)
+            if (masjidLogo != null) {
+                drawLogo(
+                    canvas = canvas,
+                    frameWidth = result.width,
+                    frameHeight = result.height,
+                    logo = masjidLogo,
+                    targetWidth = targetWidth,
+                    right = false,
+                    paint = paint
+                )
+            }
 
             FileOutputStream(output).use { stream ->
                 if (!result.compress(Bitmap.CompressFormat.JPEG, 97, stream)) {
@@ -88,6 +97,7 @@ class PhotoWatermarker(private val context: Context) {
             photo.recycle()
             result.recycle()
             mediaLogo.recycle()
+            masjidLogo?.recycle()
         }
 
         if (!output.exists() || output.length() <= 0L) {
@@ -95,9 +105,45 @@ class PhotoWatermarker(private val context: Context) {
             error("Hasil foto kosong")
         }
 
-        if (!WatermarkVerifier.verifyPhoto(output)) {
+        if (!WatermarkVerifier(context).verifyPhoto(output, template)) {
             output.delete()
-            error("Logo MEDIA WAHID TV belum terdeteksi pada hasil foto")
+            error("Watermark template belum terverifikasi pada hasil foto")
         }
+    }
+
+    private fun decodeLogo(resourceId: Int): Bitmap? =
+        BitmapFactory.decodeResource(
+            context.resources,
+            resourceId,
+            BitmapFactory.Options().apply {
+                inScaled = false
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+        )
+
+    private fun drawLogo(
+        canvas: Canvas,
+        frameWidth: Int,
+        frameHeight: Int,
+        logo: Bitmap,
+        targetWidth: Int,
+        right: Boolean,
+        paint: Paint
+    ) {
+        val targetHeight = (
+            targetWidth * logo.height.toFloat() / logo.width.toFloat()
+        )
+            .roundToInt()
+            .coerceAtLeast(1)
+
+        val rect = WatermarkGeometry.topCornerRect(
+            frameWidth = frameWidth,
+            frameHeight = frameHeight,
+            logoWidth = targetWidth,
+            logoHeight = targetHeight,
+            right = right
+        )
+
+        canvas.drawBitmap(logo, null, rect, paint)
     }
 }

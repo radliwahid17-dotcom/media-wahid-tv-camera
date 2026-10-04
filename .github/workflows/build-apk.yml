@@ -25,17 +25,20 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Reject legacy Masjid resources
+      - name: Reject obsolete logo source folders
         run: |
-          if grep -Rni "masjid" app/src/main; then
-            echo "Legacy Masjid reference detected"
-            exit 1
-          fi
+          test ! -d app/src/main/masjid-logo-source
+          test ! -d app/src/main/masjid-logo-v2
+          test ! -d app/src/main/masjid-logo-v3
+          test ! -d app/src/main/masjid-logo-v4
+          test ! -d app/src/main/masjid-logo-v5
 
-      - name: Verify source logo can decode
+      - name: Verify both watermark assets can decode
         run: |
           test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
           echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
+          test -s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
+
           cat > /tmp/VerifyImage.java <<'EOF'
           import javax.imageio.ImageIO;
           import java.io.File;
@@ -43,36 +46,42 @@ jobs:
               public static void main(String[] args) throws Exception {
                   var image = ImageIO.read(new File(args[0]));
                   if (image == null || image.getWidth() < 50 || image.getHeight() < 50) {
-                      throw new IllegalStateException("MEDIA WAHID TV logo gagal di-decode");
+                      throw new IllegalStateException("Logo gagal di-decode: " + args[0]);
                   }
-                  System.out.println("Decoded logo: " + image.getWidth() + "x" + image.getHeight());
+                  System.out.println(args[0] + " -> " + image.getWidth() + "x" + image.getHeight());
               }
           }
           EOF
+
           java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
+          java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
 
       - name: Build and lint
         run: gradle --no-daemon :app:assembleDebug :app:lintDebug
 
-      - name: Verify logo inside APK can decode
+      - name: Verify both logos inside APK can decode
         run: |
           unzip -p app/build/outputs/apk/debug/app-debug.apk res/drawable-nodpi-v4/media_wahid_logo_original.jpg > /tmp/media_wahid_logo_original.jpg
-          test -s /tmp/media_wahid_logo_original.jpg
-          java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg
+          unzip -p app/build/outputs/apk/debug/app-debug.apk res/drawable-nodpi-v4/masjid_raya_logo.jpg > /tmp/masjid_raya_logo.jpg
 
-      - name: Verify APK contains no legacy Masjid assets
+          test -s /tmp/media_wahid_logo_original.jpg
+          test -s /tmp/masjid_raya_logo.jpg
+
+          java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg
+          java /tmp/VerifyImage.java /tmp/masjid_raya_logo.jpg
+
+      - name: Verify dual-template code is packaged
         run: |
-          if unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -i "masjid"; then
-            echo "Legacy Masjid asset found inside APK"
-            exit 1
-          fi
+          grep -R "enum class WatermarkTemplate" app/src/main/java/tv/mediawahid/camera/WatermarkTemplate.kt
+          grep -R "WatermarkTemplate.DUAL" app/src/main/java/tv/mediawahid/camera
+          grep -R "WatermarkTemplate.MEDIA_ONLY" app/src/main/java/tv/mediawahid/camera
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v3.0.4.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.0-DUAL-TEMPLATE.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MEDIA-WAHID-TV-APK-v3
-          path: MEDIA-WAHID-TV-Camera-v3.0.4.apk
+          name: MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE
+          path: MEDIA-WAHID-TV-Camera-v4.0.0-DUAL-TEMPLATE.apk
           retention-days: 30

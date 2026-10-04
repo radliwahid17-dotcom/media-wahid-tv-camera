@@ -1,26 +1,47 @@
 package tv.mediawahid.camera
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-object WatermarkVerifier {
+class WatermarkVerifier(private val context: Context) {
 
-    fun verifyPhoto(file: File): Boolean {
-        val options = decodeOptionsForMaxSide(file, 1920)
-        val bitmap = BitmapFactory.decodeFile(file.absolutePath, options) ?: return false
+    fun verifyPhoto(file: File, template: WatermarkTemplate): Boolean {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+
+        var sample = 1
+        val largest = max(bounds.outWidth, bounds.outHeight)
+        while (largest / sample > 1920 && sample < 8) sample *= 2
+
+        val bitmap = BitmapFactory.decodeFile(
+            file.absolutePath,
+            BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+        ) ?: return false
+
         return try {
-            hasBrandPatternInCorner(bitmap)
+            verifyFrame(
+                frame = bitmap,
+                template = template,
+                originalDisplayWidth = bounds.outWidth
+            )
         } finally {
             bitmap.recycle()
         }
     }
 
-    fun verifyVideo(file: File): Boolean {
+    fun verifyVideo(file: File, template: WatermarkTemplate): Boolean {
         val retriever = MediaMetadataRetriever()
 
         return try {
@@ -30,23 +51,30 @@ object WatermarkVerifier {
                 MediaMetadataRetriever.METADATA_KEY_DURATION
             )?.toLongOrNull() ?: 0L
 
-            val width = retriever.extractMetadata(
+            val rawWidth = retriever.extractMetadata(
                 MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH
             )?.toIntOrNull()?.coerceAtLeast(1) ?: 1280
 
-            val height = retriever.extractMetadata(
+            val rawHeight = retriever.extractMetadata(
                 MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT
             )?.toIntOrNull()?.coerceAtLeast(1) ?: 720
 
-            val maxSide = max(width, height)
+            val rotation = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION
+            )?.toIntOrNull() ?: 0
+
+            val displayWidth = if (rotation == 90 || rotation == 270) rawHeight else rawWidth
+            val displayHeight = if (rotation == 90 || rotation == 270) rawWidth else rawHeight
+
+            val maxSide = max(displayWidth, displayHeight)
             val scale = if (maxSide > 1280) 1280f / maxSide.toFloat() else 1f
-            val scaledWidth = (width * scale).roundToInt().coerceAtLeast(1)
-            val scaledHeight = (height * scale).roundToInt().coerceAtLeast(1)
+            val requestWidth = (displayWidth * scale).roundToInt().coerceAtLeast(1)
+            val requestHeight = (displayHeight * scale).roundToInt().coerceAtLeast(1)
 
             val candidatesUs = listOf(
                 0L,
-                500_000L,
-                if (durationMs > 3000L) 2_000_000L else (durationMs * 500L)
+                700_000L,
+                if (durationMs > 4000L) 2_500_000L else (durationMs * 500L)
             ).distinct()
 
             var checked = 0
@@ -57,8 +85,8 @@ object WatermarkVerifier {
                     retriever.getScaledFrameAtTime(
                         timeUs.coerceAtLeast(0L),
                         MediaMetadataRetriever.OPTION_CLOSEST,
-                        scaledWidth,
-                        scaledHeight
+                        requestWidth,
+                        requestHeight
                     )
                 } catch (_: Throwable) {
                     retriever.getFrameAtTime(
@@ -68,7 +96,11 @@ object WatermarkVerifier {
                 } ?: continue
 
                 checked++
-                if (hasBrandPatternInCorner(frame)) verified++
+
+                if (verifyFrame(frame, template, displayWidth)) {
+                    verified++
+                }
+
                 frame.recycle()
 
                 if (verified >= 2) return true
@@ -85,86 +117,156 @@ object WatermarkVerifier {
         }
     }
 
-    private fun decodeOptionsForMaxSide(file: File, maxSide: Int): BitmapFactory.Options {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, bounds)
+    private fun verifyFrame(
+        frame: Bitmap,
+        template: WatermarkTemplate,
+        originalDisplayWidth: Int
+    ): Boolean {
+        val mediaLogo = decodeLogo(R.drawable.media_wahid_logo_original) ?: return false
 
-        var sample = 1
-        var largest = max(bounds.outWidth, bounds.outHeight)
-        while (largest / sample > maxSide && sample < 8) {
-            sample *= 2
-        }
+        try {
+            val mediaOk = matchesLogo(
+                frame = frame,
+                reference = mediaLogo,
+                originalDisplayWidth = originalDisplayWidth,
+                template = template,
+                right = true
+            )
 
-        return BitmapFactory.Options().apply {
-            inSampleSize = sample
-            inPreferredConfig = Bitmap.Config.ARGB_8888
+            if (!mediaOk) return false
+            if (template == WatermarkTemplate.MEDIA_ONLY) return true
+
+            val masjidLogo = decodeLogo(R.drawable.masjid_raya_logo) ?: return false
+
+            return try {
+                matchesLogo(
+                    frame = frame,
+                    reference = masjidLogo,
+                    originalDisplayWidth = originalDisplayWidth,
+                    template = template,
+                    right = false
+                )
+            } finally {
+                masjidLogo.recycle()
+            }
+        } finally {
+            mediaLogo.recycle()
         }
     }
 
-    private fun hasBrandPatternInCorner(bitmap: Bitmap): Boolean {
-        if (bitmap.width < 40 || bitmap.height < 40) return false
-
-        // Watermark resmi selalu berada di kanan atas.
-        // Verifikasi hanya area target agar konten video/foto di sudut lain
-        // tidak pernah bisa memicu false-positive.
-        val regionWidth = (bitmap.width * 0.38f).roundToInt().coerceAtLeast(1)
-        val regionHeight = (bitmap.height * 0.32f).roundToInt().coerceAtLeast(1)
-
-        return hasBrandPattern(
-            bitmap,
-            (bitmap.width - regionWidth).coerceAtLeast(0),
-            0,
-            bitmap.width,
-            regionHeight.coerceAtMost(bitmap.height)
+    private fun decodeLogo(resourceId: Int): Bitmap? =
+        BitmapFactory.decodeResource(
+            context.resources,
+            resourceId,
+            BitmapFactory.Options().apply {
+                inScaled = false
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
         )
+
+    private fun matchesLogo(
+        frame: Bitmap,
+        reference: Bitmap,
+        originalDisplayWidth: Int,
+        template: WatermarkTemplate,
+        right: Boolean
+    ): Boolean {
+        val scaleToFrame = frame.width.toFloat() / originalDisplayWidth.coerceAtLeast(1)
+        val fullTargetWidth = WatermarkGeometry.targetWidth(originalDisplayWidth, template)
+
+        val logoWidth = (fullTargetWidth * scaleToFrame)
+            .roundToInt()
+            .coerceAtLeast(20)
+            .coerceAtMost(frame.width)
+
+        val logoHeight = (
+            logoWidth * reference.height.toFloat() / reference.width.toFloat()
+        )
+            .roundToInt()
+            .coerceAtLeast(12)
+            .coerceAtMost(frame.height)
+
+        val rect = WatermarkGeometry.topCornerRect(
+            frameWidth = frame.width,
+            frameHeight = frame.height,
+            logoWidth = logoWidth,
+            logoHeight = logoHeight,
+            right = right
+        )
+
+        if (rect.width() < 20 || rect.height() < 12) return false
+
+        val scaledReference = Bitmap.createScaledBitmap(
+            reference,
+            rect.width(),
+            rect.height(),
+            true
+        )
+
+        return try {
+            compareInformativePixels(frame, rect.left, rect.top, scaledReference)
+        } finally {
+            scaledReference.recycle()
+        }
     }
 
-    private fun hasBrandPattern(
-        bitmap: Bitmap,
+    private fun compareInformativePixels(
+        frame: Bitmap,
         startX: Int,
         startY: Int,
-        endX: Int,
-        endY: Int
+        reference: Bitmap
     ): Boolean {
-        val step = max(1, minOf(bitmap.width, bitmap.height) / 420)
+        val step = max(1, reference.width / 140)
 
-        var total = 0
-        var red = 0
-        var blue = 0
-        var white = 0
-        var dark = 0
+        var informative = 0
+        var close = 0
+        var totalDifference = 0L
 
-        var y = startY
-        while (y < endY) {
-            var x = startX
-            while (x < endX) {
-                val color = bitmap.getPixel(x, y)
-                val r = Color.red(color)
-                val g = Color.green(color)
-                val b = Color.blue(color)
+        var y = 0
+        while (y < reference.height) {
+            var x = 0
+            while (x < reference.width) {
+                val refColor = reference.getPixel(x, y)
+                val rr = Color.red(refColor)
+                val rg = Color.green(refColor)
+                val rb = Color.blue(refColor)
 
-                total++
+                val distanceFromWhite =
+                    abs(rr - 245) + abs(rg - 245) + abs(rb - 245)
 
-                if (r > 150 && r > g * 1.22f && r > b * 1.10f) red++
-                if (b > 90 && b > r * 1.12f && b > g * 1.02f) blue++
-                if (r > 212 && g > 212 && b > 212) white++
-                if (r < 70 && g < 70 && b < 70) dark++
+                if (distanceFromWhite >= 40) {
+                    val targetX = startX + x
+                    val targetY = startY + y
+
+                    if (targetX in 0 until frame.width && targetY in 0 until frame.height) {
+                        val frameColor = frame.getPixel(targetX, targetY)
+                        val fr = Color.red(frameColor)
+                        val fg = Color.green(frameColor)
+                        val fb = Color.blue(frameColor)
+
+                        val diff = (
+                            abs(fr - rr) +
+                                abs(fg - rg) +
+                                abs(fb - rb)
+                            ) / 3
+
+                        informative++
+                        totalDifference += diff.toLong()
+
+                        if (diff <= 70) close++
+                    }
+                }
 
                 x += step
             }
             y += step
         }
 
-        if (total <= 0) return false
+        if (informative < 45) return false
 
-        val redRatio = red.toFloat() / total
-        val blueRatio = blue.toFloat() / total
-        val whiteRatio = white.toFloat() / total
-        val contrastRatio = (white + dark).toFloat() / total
+        val averageDifference = totalDifference.toFloat() / informative
+        val closeRatio = close.toFloat() / informative
 
-        return redRatio >= 0.0025f &&
-            blueRatio >= 0.0025f &&
-            whiteRatio >= 0.010f &&
-            contrastRatio >= 0.035f
+        return averageDifference <= 58f && closeRatio >= 0.58f
     }
 }

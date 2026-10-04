@@ -1,30 +1,39 @@
-# MEDIA WAHID TV Camera v3
+# MEDIA WAHID TV Camera v4 — Dual Template
 
-Aplikasi Android khusus MEDIA WAHID TV dengan fokus utama pada hasil yang aman untuk dipakai di lapangan.
+Satu aplikasi Android dengan dua template watermark yang bisa dipilih sebelum foto atau video.
 
-## Prinsip v3
+## Template
 
-- Rekam memakai kamera bawaan Samsung agar fitur kamera tetap normal.
-- Video panjang mengikuti kemampuan Samsung Camera, bukan timer buatan aplikasi.
-- Kamera depan/belakang dan fitur kamera tetap dikelola aplikasi kamera bawaan.
-- Setelah video selesai, pilih rekaman terakhir.
-- Aplikasi menanam logo MEDIA WAHID TV dengan Media3 Transformer.
-- Hasil tidak disimpan ke Galeri sampai watermark diverifikasi pada frame hasil.
-- Foto juga diverifikasi setelah watermark ditanam.
-- File asli dari Samsung Camera tidak dihapus.
-- Jika proses watermark gagal, aplikasi gagal secara aman dan tidak mengklaim sukses.
+### Template A — Masjid + MEDIA WAHID TV
+- Logo Masjid: kiri atas
+- Logo MEDIA WAHID TV: kanan atas
+- Kedua logo wajib lolos verifikasi sebelum hasil dinyatakan sukses
+
+### Template B — MEDIA WAHID TV
+- Logo MEDIA WAHID TV: kanan atas
+- Logo wajib lolos verifikasi sebelum hasil dinyatakan sukses
+
+Pilihan template tersimpan otomatis dan template yang aktif dikunci saat tombol foto/video ditekan.
+
+## Kamera
+Aplikasi membuka Samsung Camera asli agar fungsi kamera vendor tetap tersedia. Setelah video selesai, pilih rekaman yang baru dibuat untuk dirender dengan template yang dipilih.
+
+## Fail-closed watermark
+Foto/video baru disimpan ke folder MEDIA WAHID TV setelah watermark template terverifikasi pada hasil render.
 
 ## Lokasi hasil
-
 - Video: Galeri → Movies → MEDIA WAHID TV
 - Foto: Galeri → Pictures → MEDIA WAHID TV
 
+Nama file membedakan template:
+- `MEDIA_WAHID_TV_DUAL_...`
+- `MEDIA_WAHID_TV_MEDIA_...`
+
 ## Build gate
+GitHub Actions memeriksa:
+- kedua asset logo dapat di-decode,
+- compile + Android lint,
+- kedua logo tetap valid setelah masuk APK,
+- engine memuat kedua mode template.
 
-GitHub Actions menolak build jika:
-- source logo rusak,
-- logo di dalam APK tidak bisa di-decode,
-- masih ada referensi/resource Masjid lama,
-- compile atau Android lint gagal.
-
-Artifact final: **MEDIA-WAHID-TV-APK-v3**
+Artifact: **MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE**

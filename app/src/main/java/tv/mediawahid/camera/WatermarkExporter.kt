@@ -34,40 +34,58 @@ class WatermarkExporter(private val context: Context) {
     fun export(
         inputUri: Uri,
         output: File,
+        template: WatermarkTemplate,
         onProgress: (Int) -> Unit,
         onCompleted: () -> Unit,
         onError: (Throwable) -> Unit,
     ) {
         cancel()
         cancelled = false
+
         if (output.exists()) output.delete()
 
-        val sourceLogo = BitmapFactory.decodeResource(
-            context.resources,
-            R.drawable.media_wahid_logo_original,
-            BitmapFactory.Options().apply {
-                inScaled = false
-                inPreferredConfig = Bitmap.Config.ARGB_8888
+        val mediaLogoSource = decodeLogo(R.drawable.media_wahid_logo_original)
+            ?: run {
+                onError(IllegalStateException("Logo MEDIA WAHID TV tidak dapat dibaca"))
+                return
             }
-        ) ?: run {
-            onError(IllegalStateException("Logo MEDIA WAHID TV tidak dapat dibaca"))
-            return
+
+        val masjidLogoSource = if (template == WatermarkTemplate.DUAL) {
+            decodeLogo(R.drawable.masjid_raya_logo)
+                ?: run {
+                    mediaLogoSource.recycle()
+                    onError(IllegalStateException("Logo Masjid tidak dapat dibaca"))
+                    return
+                }
+        } else {
+            null
         }
 
-        val targetWidth = readTargetLogoWidth(inputUri)
-        val targetHeight = (
-            targetWidth * sourceLogo.height.toFloat() / sourceLogo.width.toFloat()
-        ).roundToInt().coerceAtLeast(1)
+        val displayWidth = readDisplayWidth(inputUri)
+        val targetWidth = WatermarkGeometry.targetWidth(displayWidth, template)
 
-        val scaledLogo = Bitmap.createScaledBitmap(
-            sourceLogo,
-            targetWidth,
-            targetHeight,
-            true
-        )
+        val mediaLogo = scaleLogo(mediaLogoSource, targetWidth)
+        val masjidLogo = masjidLogoSource?.let { scaleLogo(it, targetWidth) }
 
-        if (scaledLogo !== sourceLogo) {
-            sourceLogo.recycle()
+        if (mediaLogo !== mediaLogoSource) mediaLogoSource.recycle()
+        if (masjidLogoSource != null && masjidLogo !== masjidLogoSource) {
+            masjidLogoSource.recycle()
+        }
+
+        val overlays = mutableListOf<BitmapOverlay>()
+
+        if (masjidLogo != null) {
+            val masjidSettings = StaticOverlaySettings.Builder()
+                .setOverlayFrameAnchor(-1f, 1f)
+                .setBackgroundFrameAnchor(-0.94f, 0.92f)
+                .setScale(1f, 1f)
+                .setAlphaScale(1f)
+                .build()
+
+            overlays += BitmapOverlay.createStaticBitmapOverlay(
+                masjidLogo,
+                masjidSettings
+            )
         }
 
         val mediaSettings = StaticOverlaySettings.Builder()
@@ -77,16 +95,20 @@ class WatermarkExporter(private val context: Context) {
             .setAlphaScale(1f)
             .build()
 
-        val mediaOverlay = BitmapOverlay.createStaticBitmapOverlay(
-            scaledLogo,
+        overlays += BitmapOverlay.createStaticBitmapOverlay(
+            mediaLogo,
             mediaSettings
         )
-        val overlayEffect = OverlayEffect(listOf(mediaOverlay))
 
         val editedMediaItem = EditedMediaItem.Builder(
             MediaItem.fromUri(inputUri)
         )
-            .setEffects(Effects(emptyList(), listOf(overlayEffect)))
+            .setEffects(
+                Effects(
+                    emptyList(),
+                    listOf(OverlayEffect(overlays))
+                )
+            )
             .build()
 
         val localTransformer = Transformer.Builder(context)
@@ -100,11 +122,9 @@ class WatermarkExporter(private val context: Context) {
                     stopProgress()
                     transformer = null
 
-                    if (!scaledLogo.isRecycled) scaledLogo.recycle()
+                    mediaLogo.recycle()
+                    masjidLogo?.recycle()
 
-                    // Listener Transformer berjalan di application/main thread.
-                    // Verifikasi frame bisa berat pada video 4K/panjang, jadi wajib
-                    // dipindah ke worker agar UI tidak freeze/ANR.
                     Thread {
                         try {
                             if (cancelled) return@Thread
@@ -117,9 +137,9 @@ class WatermarkExporter(private val context: Context) {
 
                             if (cancelled) return@Thread
 
-                            if (!WatermarkVerifier.verifyVideo(output)) {
+                            if (!WatermarkVerifier(context).verifyVideo(output, template)) {
                                 output.delete()
-                                error("Logo MEDIA WAHID TV belum terdeteksi pada hasil video")
+                                error("Watermark template belum terverifikasi pada hasil video")
                             }
 
                             if (!cancelled) onCompleted()
@@ -136,15 +156,21 @@ class WatermarkExporter(private val context: Context) {
                 ) {
                     stopProgress()
                     transformer = null
-                    if (!scaledLogo.isRecycled) scaledLogo.recycle()
+
+                    if (!mediaLogo.isRecycled) mediaLogo.recycle()
+                    if (masjidLogo != null && !masjidLogo.isRecycled) masjidLogo.recycle()
+
                     output.delete()
-                    onError(
-                        IllegalStateException(
-                            "Gagal merender video berlogo: " +
-                                (exportException.message ?: "codec tidak tersedia"),
-                            exportException
+
+                    if (!cancelled) {
+                        onError(
+                            IllegalStateException(
+                                "Gagal merender video: " +
+                                    (exportException.message ?: "codec tidak tersedia"),
+                                exportException
+                            )
                         )
-                    )
+                    }
                 }
             })
             .build()
@@ -156,20 +182,51 @@ class WatermarkExporter(private val context: Context) {
             startProgress(localTransformer, onProgress)
         } catch (error: Throwable) {
             transformer = null
-            if (!scaledLogo.isRecycled) scaledLogo.recycle()
+
+            if (!mediaLogo.isRecycled) mediaLogo.recycle()
+            if (masjidLogo != null && !masjidLogo.isRecycled) masjidLogo.recycle()
+
             output.delete()
-            onError(error)
+
+            if (!cancelled) onError(error)
         }
     }
 
     fun cancel() {
         cancelled = true
         stopProgress()
+
         try {
             transformer?.cancel()
         } catch (_: Throwable) {
         }
+
         transformer = null
+    }
+
+    private fun decodeLogo(resourceId: Int): Bitmap? =
+        BitmapFactory.decodeResource(
+            context.resources,
+            resourceId,
+            BitmapFactory.Options().apply {
+                inScaled = false
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+        )
+
+    private fun scaleLogo(source: Bitmap, targetWidth: Int): Bitmap {
+        val targetHeight = (
+            targetWidth * source.height.toFloat() / source.width.toFloat()
+        )
+            .roundToInt()
+            .coerceAtLeast(1)
+
+        return Bitmap.createScaledBitmap(
+            source,
+            targetWidth,
+            targetHeight,
+            true
+        )
     }
 
     private fun startProgress(
@@ -184,6 +241,7 @@ class WatermarkExporter(private val context: Context) {
 
                 try {
                     val state = activeTransformer.getProgress(holder)
+
                     if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
                         onProgress(holder.progress.coerceIn(0, 99))
                     }
@@ -205,7 +263,7 @@ class WatermarkExporter(private val context: Context) {
         progressRunnable = null
     }
 
-    private fun readTargetLogoWidth(inputUri: Uri): Int {
+    private fun readDisplayWidth(inputUri: Uri): Int {
         val retriever = MediaMetadataRetriever()
 
         return try {
@@ -223,17 +281,9 @@ class WatermarkExporter(private val context: Context) {
                 MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION
             )?.toIntOrNull() ?: 0
 
-            val displayWidth = if (rotation == 90 || rotation == 270) {
-                rawHeight
-            } else {
-                rawWidth
-            }
-
-            (displayWidth * 0.20f)
-                .roundToInt()
-                .coerceIn(180, 620)
+            if (rotation == 90 || rotation == 270) rawHeight else rawWidth
         } catch (_: Throwable) {
-            260
+            1080
         } finally {
             try {
                 retriever.release()
