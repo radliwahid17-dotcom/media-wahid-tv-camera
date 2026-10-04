@@ -73,11 +73,11 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) {
         cameraLaunchInProgress = false
-        pendingTemplate = WatermarkTemplate.fromStorage(
-            preferences.getString(KEY_PENDING_TEMPLATE, selectedTemplate.storageValue)
-        )
+        val lockedTemplate = loadPendingTemplateOrAbort("video")
+            ?: return@registerForActivityResult
+        pendingTemplate = lockedTemplate
 
-        statusText.text = "Pilih rekaman yang baru dibuat"
+        statusText.text = "Pilih rekaman yang baru dibuat • " + lockedTemplate.displayName
         videoPickerLauncher.launch(
             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
         )
@@ -91,16 +91,19 @@ class MainActivity : ComponentActivity() {
             return@registerForActivityResult
         }
 
-        processAndSaveVideo(uri, pendingTemplate)
+        val lockedTemplate = loadPendingTemplateOrAbort("video")
+            ?: return@registerForActivityResult
+        pendingTemplate = lockedTemplate
+        processAndSaveVideo(uri, lockedTemplate)
     }
 
     private val photoLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         cameraLaunchInProgress = false
-        pendingTemplate = WatermarkTemplate.fromStorage(
-            preferences.getString(KEY_PENDING_TEMPLATE, selectedTemplate.storageValue)
-        )
+        val lockedTemplate = loadPendingTemplateOrAbort("foto")
+            ?: return@registerForActivityResult
+        pendingTemplate = lockedTemplate
 
         val captureFile = currentPhotoFile ?: preferences
             .getString(KEY_PENDING_PHOTO_PATH, null)
@@ -114,7 +117,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (usableFile != null && usableFile.exists() && usableFile.length() > 0L) {
-            processAndSavePhoto(usableFile, pendingTemplate)
+            processAndSavePhoto(usableFile, lockedTemplate)
         } else {
             captureFile?.delete()
             clearPendingPhotoPath()
@@ -460,11 +463,20 @@ class MainActivity : ComponentActivity() {
     private fun selectTemplate(template: WatermarkTemplate) {
         if (processingPanel.visibility == View.VISIBLE || cameraLaunchInProgress) return
 
-        selectedTemplate = template
-        preferences.edit()
+        val persisted = preferences.edit()
             .putString(KEY_TEMPLATE, template.storageValue)
-            .apply()
+            .commit()
 
+        if (!persisted) {
+            Toast.makeText(
+                this,
+                "Template gagal disimpan. Coba pilih lagi.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        selectedTemplate = template
         applyTemplateSelection(showToast = true)
     }
 
@@ -520,12 +532,11 @@ class MainActivity : ComponentActivity() {
     private fun launchSamsungVideo() {
         if (cameraLaunchInProgress || processingPanel.visibility == View.VISIBLE) return
 
-        pendingTemplate = selectedTemplate
-        persistPendingTemplate()
+        val lockedTemplate = lockTemplateForCapture() ?: return
 
         cameraLaunchInProgress = true
         statusText.text =
-            "Rekam dengan Samsung Camera • template: " + pendingTemplate.displayName
+            "Rekam dengan Samsung Camera • TEMPLATE TERKUNCI: " + lockedTemplate.displayName
 
         val baseIntent = Intent(MediaStore.INTENT_ACTION_VIDEO_CAMERA)
 
@@ -558,8 +569,7 @@ class MainActivity : ComponentActivity() {
     private fun launchSamsungPhoto() {
         if (cameraLaunchInProgress || processingPanel.visibility == View.VISIBLE) return
 
-        pendingTemplate = selectedTemplate
-        persistPendingTemplate()
+        val lockedTemplate = lockTemplateForCapture() ?: return
 
         val capturesDir = File(externalCacheDir ?: cacheDir, "captures").apply { mkdirs() }
         val captureFile = File(
@@ -569,9 +579,21 @@ class MainActivity : ComponentActivity() {
 
         currentPhotoFile?.delete()
         currentPhotoFile = captureFile
-        preferences.edit()
+        val photoPathSaved = preferences.edit()
             .putString(KEY_PENDING_PHOTO_PATH, captureFile.absolutePath)
-            .apply()
+            .commit()
+
+        if (!photoPathSaved) {
+            captureFile.delete()
+            currentPhotoFile = null
+            showReadyState("Gagal mengunci sesi foto")
+            Toast.makeText(
+                this,
+                "Sesi foto gagal disimpan. Coba lagi.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
 
         val outputUri = FileProvider.getUriForFile(
             this,
@@ -588,7 +610,7 @@ class MainActivity : ComponentActivity() {
 
         cameraLaunchInProgress = true
         statusText.text =
-            "Foto dengan Samsung Camera • template: " + pendingTemplate.displayName
+            "Foto dengan Samsung Camera • TEMPLATE TERKUNCI: " + lockedTemplate.displayName
 
         try {
             photoLauncher.launch(Intent(baseIntent).apply {
@@ -618,17 +640,49 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun persistPendingTemplate() {
-        preferences.edit()
-            .putString(KEY_PENDING_TEMPLATE, pendingTemplate.storageValue)
-            .apply()
+    private fun lockTemplateForCapture(): WatermarkTemplate? {
+        val locked = selectedTemplate
+
+        val persisted = preferences.edit()
+            .putString(KEY_TEMPLATE, locked.storageValue)
+            .putString(KEY_PENDING_TEMPLATE, locked.storageValue)
+            .commit()
+
+        if (!persisted) {
+            showReadyState("Template belum berhasil dikunci")
+            Toast.makeText(
+                this,
+                "Template gagal dikunci. Kamera tidak dibuka supaya hasil tidak salah.",
+                Toast.LENGTH_LONG
+            ).show()
+            return null
+        }
+
+        pendingTemplate = locked
+        return locked
+    }
+
+    private fun loadPendingTemplateOrAbort(captureType: String): WatermarkTemplate? {
+        val rawValue = preferences.getString(KEY_PENDING_TEMPLATE, null)
+        val locked = WatermarkTemplate.fromStorageOrNull(rawValue)
+
+        if (locked != null) return locked
+
+        cameraLaunchInProgress = false
+        showReadyState("Template $captureType hilang. Ulangi pengambilan dari aplikasi.")
+        Toast.makeText(
+            this,
+            "Sesi $captureType dibatalkan karena template tidak terdeteksi.",
+            Toast.LENGTH_LONG
+        ).show()
+        return null
     }
 
     private fun clearPendingPhotoPath() {
         currentPhotoFile = null
         preferences.edit()
             .remove(KEY_PENDING_PHOTO_PATH)
-            .apply()
+            .commit()
     }
 
     private fun processAndSaveVideo(

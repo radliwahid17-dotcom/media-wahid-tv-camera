@@ -1,4 +1,4 @@
-# MEDIA WAHID TV Camera v4 — Dual Template
+# MEDIA WAHID TV Camera v4.0.4 — Hardened Dual Template
 
 Satu aplikasi Android dengan dua template watermark yang bisa dipilih sebelum foto atau video.
 
@@ -37,3 +37,10 @@ GitHub Actions memeriksa:
 - engine memuat kedua mode template.
 
 Artifact: **MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE**
+
+
+## v4.0.4 hardening
+- Template yang dipilih dikunci **sinkron** sebelum Samsung Camera dibuka.
+- Jika lock template gagal/hilang, capture dihentikan (fail-closed) supaya tidak diam-diam jatuh ke template lain.
+- Mode **Masjid + MEDIA WAHID TV** pada video dibuat sebagai **satu bitmap overlay komposit**: Masjid kiri + MEDIA WAHID TV kanan.
+- Path foto pending juga disimpan sinkron agar tahan process recreation.

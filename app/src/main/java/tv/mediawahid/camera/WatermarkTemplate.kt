@@ -17,7 +17,10 @@ enum class WatermarkTemplate(val storageValue: String) {
         }
 
     companion object {
+        fun fromStorageOrNull(value: String?): WatermarkTemplate? =
+            values().firstOrNull { it.storageValue == value }
+
         fun fromStorage(value: String?): WatermarkTemplate =
-            values().firstOrNull { it.storageValue == value } ?: DUAL
+            fromStorageOrNull(value) ?: DUAL
     }
 }

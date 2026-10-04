@@ -112,14 +112,30 @@ jobs:
           java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg media
           java /tmp/VerifyImage.java /tmp/masjid_raya_logo.jpg masjid
 
-      - name: Verify dual-template code is packaged
+      - name: Verify hardened dual-template path is packaged
         run: |
           grep -R "enum class WatermarkTemplate" app/src/main/java/tv/mediawahid/camera/WatermarkTemplate.kt
           grep -R "WatermarkTemplate.DUAL" app/src/main/java/tv/mediawahid/camera
           grep -R "WatermarkTemplate.MEDIA_ONLY" app/src/main/java/tv/mediawahid/camera
+          grep -R "lockTemplateForCapture" app/src/main/java/tv/mediawahid/camera/MainActivity.kt
+          grep -R "fromStorageOrNull" app/src/main/java/tv/mediawahid/camera/WatermarkTemplate.kt
+          grep -R "buildDualOverlayBitmap" app/src/main/java/tv/mediawahid/camera/WatermarkExporter.kt
+
+          python3 - <<'PY'
+          from pathlib import Path
+          main = Path("app/src/main/java/tv/mediawahid/camera/MainActivity.kt").read_text()
+          exporter = Path("app/src/main/java/tv/mediawahid/camera/WatermarkExporter.kt").read_text()
+          assert ".putString(KEY_PENDING_TEMPLATE, locked.storageValue)" in main
+          lock_block = main.split("private fun lockTemplateForCapture()", 1)[1].split("private fun loadPendingTemplateOrAbort", 1)[0]
+          assert ".commit()" in lock_block
+          assert "buildDualOverlayBitmap" in exporter
+          assert "listOf(OverlayEffect(listOf(overlay)))" in exporter
+          assert "setBackgroundFrameAnchor(0.94f, 0.92f)" in exporter
+          print("Dual template lock + single composite overlay: OK")
+          PY
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.3-DUAL-TEMPLATE.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.4-DUAL-TEMPLATE.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

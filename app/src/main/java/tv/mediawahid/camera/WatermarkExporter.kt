@@ -3,6 +3,8 @@ package tv.mediawahid.camera
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Handler
@@ -13,7 +15,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.StaticOverlaySettings
-import androidx.media3.effect.TextureOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
@@ -73,32 +74,37 @@ class WatermarkExporter(private val context: Context) {
             masjidLogoSource.recycle()
         }
 
-        val overlays = mutableListOf<TextureOverlay>()
+        val overlayBitmap = if (template == WatermarkTemplate.DUAL) {
+            val requiredMasjidLogo = masjidLogo
+                ?: run {
+                    if (!mediaLogo.isRecycled) mediaLogo.recycle()
+                    onError(IllegalStateException("Logo Masjid tidak tersedia untuk template gabungan"))
+                    return
+                }
 
-        if (masjidLogo != null) {
-            val masjidSettings = StaticOverlaySettings.Builder()
-                .setOverlayFrameAnchor(-1f, 1f)
-                .setBackgroundFrameAnchor(-0.94f, 0.92f)
-                .setScale(1f, 1f)
-                .setAlphaScale(1f)
-                .build()
-
-            overlays += BitmapOverlay.createStaticBitmapOverlay(
-                masjidLogo,
-                masjidSettings
+            val combined = buildDualOverlayBitmap(
+                displayWidth = displayWidth,
+                masjidLogo = requiredMasjidLogo,
+                mediaLogo = mediaLogo
             )
+
+            if (!requiredMasjidLogo.isRecycled) requiredMasjidLogo.recycle()
+            if (!mediaLogo.isRecycled) mediaLogo.recycle()
+            combined
+        } else {
+            mediaLogo
         }
 
-        val mediaSettings = StaticOverlaySettings.Builder()
+        val overlaySettings = StaticOverlaySettings.Builder()
             .setOverlayFrameAnchor(1f, 1f)
             .setBackgroundFrameAnchor(0.94f, 0.92f)
             .setScale(1f, 1f)
             .setAlphaScale(1f)
             .build()
 
-        overlays += BitmapOverlay.createStaticBitmapOverlay(
-            mediaLogo,
-            mediaSettings
+        val overlay = BitmapOverlay.createStaticBitmapOverlay(
+            overlayBitmap,
+            overlaySettings
         )
 
         val editedMediaItem = EditedMediaItem.Builder(
@@ -107,7 +113,7 @@ class WatermarkExporter(private val context: Context) {
             .setEffects(
                 Effects(
                     emptyList(),
-                    listOf(OverlayEffect(overlays))
+                    listOf(OverlayEffect(listOf(overlay)))
                 )
             )
             .build()
@@ -123,8 +129,7 @@ class WatermarkExporter(private val context: Context) {
                     stopProgress()
                     transformer = null
 
-                    mediaLogo.recycle()
-                    masjidLogo?.recycle()
+                    if (!overlayBitmap.isRecycled) overlayBitmap.recycle()
 
                     Thread {
                         try {
@@ -158,8 +163,7 @@ class WatermarkExporter(private val context: Context) {
                     stopProgress()
                     transformer = null
 
-                    if (!mediaLogo.isRecycled) mediaLogo.recycle()
-                    if (masjidLogo != null && !masjidLogo.isRecycled) masjidLogo.recycle()
+                    if (!overlayBitmap.isRecycled) overlayBitmap.recycle()
 
                     output.delete()
 
@@ -184,8 +188,7 @@ class WatermarkExporter(private val context: Context) {
         } catch (error: Throwable) {
             transformer = null
 
-            if (!mediaLogo.isRecycled) mediaLogo.recycle()
-            if (masjidLogo != null && !masjidLogo.isRecycled) masjidLogo.recycle()
+            if (!overlayBitmap.isRecycled) overlayBitmap.recycle()
 
             output.delete()
 
@@ -228,6 +231,38 @@ class WatermarkExporter(private val context: Context) {
             targetHeight,
             true
         )
+    }
+
+    private fun buildDualOverlayBitmap(
+        displayWidth: Int,
+        masjidLogo: Bitmap,
+        mediaLogo: Bitmap
+    ): Bitmap {
+        val overlayWidth = (displayWidth * 0.94f)
+            .roundToInt()
+            .coerceAtLeast(masjidLogo.width + mediaLogo.width + 1)
+
+        val overlayHeight = maxOf(masjidLogo.height, mediaLogo.height)
+        val combined = Bitmap.createBitmap(
+            overlayWidth,
+            overlayHeight,
+            Bitmap.Config.ARGB_8888
+        )
+
+        val canvas = Canvas(combined)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+            alpha = 255
+        }
+
+        canvas.drawBitmap(masjidLogo, 0f, 0f, paint)
+        canvas.drawBitmap(
+            mediaLogo,
+            (overlayWidth - mediaLogo.width).toFloat(),
+            0f,
+            paint
+        )
+
+        return combined
     }
 
     private fun startProgress(
