@@ -40,11 +40,11 @@ class WatermarkExporter(private val context: Context) {
     ) {
         if (output.exists()) output.delete()
 
-        // Pakai satu asset PNG tetap untuk UI, foto, dan video.
-        // Asset ini tidak ditimpa saat build, jadi hasil APK selalu konsisten.
+        // Pakai satu asset JPEG terverifikasi untuk UI, foto, dan video.
+        // Asset direkonstruksi dari source chunks yang tervalidasi dan diuji decode saat build.
         val mediaLogo = BitmapFactory.decodeResource(
             context.resources,
-            R.drawable.media_wahid_logo,
+            R.drawable.media_wahid_logo_original,
             BitmapFactory.Options().apply { inScaled = false }
         ) ?: run {
             onError(IllegalStateException("Logo MEDIA WAHID TV tidak dapat dibaca"))

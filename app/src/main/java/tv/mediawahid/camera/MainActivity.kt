@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
         val mediaLogo = ImageView(this).apply {
-            setImageResource(R.drawable.media_wahid_logo)
+            setImageResource(R.drawable.media_wahid_logo_original)
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
         content.addView(

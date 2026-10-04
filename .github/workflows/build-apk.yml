@@ -25,11 +25,33 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Verify MEDIA WAHID TV logo asset
-        run: test -s app/src/main/res/drawable-nodpi/media_wahid_logo.png
+      - name: Verify source logo can decode
+        run: |
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
+          echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
+          cat > /tmp/VerifyImage.java <<'EOF'
+          import javax.imageio.ImageIO;
+          import java.io.File;
+          public class VerifyImage {
+              public static void main(String[] args) throws Exception {
+                  var image = ImageIO.read(new File(args[0]));
+                  if (image == null || image.getWidth() < 50 || image.getHeight() < 50) {
+                      throw new IllegalStateException("MEDIA WAHID TV logo gagal di-decode");
+                  }
+                  System.out.println("Decoded logo: " + image.getWidth() + "x" + image.getHeight());
+              }
+          }
+          EOF
+          java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
+
+      - name: Verify logo inside APK can decode
+        run: |
+          unzip -p app/build/outputs/apk/debug/app-debug.apk res/drawable-nodpi-v4/media_wahid_logo_original.jpg > /tmp/media_wahid_logo_original.jpg
+          test -s /tmp/media_wahid_logo_original.jpg
+          java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg
 
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera.apk
