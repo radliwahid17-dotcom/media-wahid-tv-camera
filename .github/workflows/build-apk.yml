@@ -27,7 +27,7 @@ jobs:
 
       - name: Reconstruct original logo
         run: |
-          cat app/src/main/logo-source/logo.part*.b64 | tr -d '\\n\\r ' | base64 -d > app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
+          cat app/src/main/logo-source/logo.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
 
       - name: Verify original logo asset
         run: |
