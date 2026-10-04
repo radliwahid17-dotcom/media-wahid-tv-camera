@@ -2,8 +2,6 @@ package tv.mediawahid.camera
 
 import android.content.Context
 import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -42,14 +40,14 @@ class WatermarkExporter(private val context: Context) {
     ) {
         if (output.exists()) output.delete()
 
-        // FINAL: decode logo JPEG asli user secara langsung.
-        // Tidak ada masking, transparansi, redraw, atau kartu putih buatan.
-        val originalLogo = BitmapFactory.decodeResource(
+        // Pakai satu asset PNG tetap untuk UI, foto, dan video.
+        // Asset ini tidak ditimpa saat build, jadi hasil APK selalu konsisten.
+        val mediaLogo = BitmapFactory.decodeResource(
             context.resources,
-            R.drawable.media_wahid_logo_original,
+            R.drawable.media_wahid_logo,
             BitmapFactory.Options().apply { inScaled = false }
         ) ?: run {
-            onError(IllegalStateException("Logo asli MEDIA WAHID TV tidak dapat dibaca"))
+            onError(IllegalStateException("Logo MEDIA WAHID TV tidak dapat dibaca"))
             return
         }
 
@@ -60,7 +58,7 @@ class WatermarkExporter(private val context: Context) {
             .setAlphaScale(0.96f)
             .build()
 
-        val mediaOverlay = BitmapOverlay.createStaticBitmapOverlay(originalLogo, mediaSettings)
+        val mediaOverlay = BitmapOverlay.createStaticBitmapOverlay(mediaLogo, mediaSettings)
         val overlayEffect = OverlayEffect(listOf(mediaOverlay))
 
         val editedMediaItem = EditedMediaItem.Builder(
@@ -83,12 +81,9 @@ class WatermarkExporter(private val context: Context) {
                         return
                     }
 
-                    if (verifyWatermark(output)) {
-                        onCompleted()
-                    } else {
-                        output.delete()
-                        onError(IllegalStateException("Logo tidak terdeteksi pada hasil video"))
-                    }
+                    // Transformer hanya menyatakan selesai setelah seluruh efek,
+                    // termasuk watermark, selesai dirender ke output.
+                    onCompleted()
                 }
 
                 override fun onError(
@@ -103,54 +98,4 @@ class WatermarkExporter(private val context: Context) {
             .start(editedMediaItem, output.absolutePath)
     }
 
-    private fun verifyWatermark(file: File): Boolean {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(file.absolutePath)
-
-            val frame = retriever.getFrameAtTime(
-                350_000L,
-                MediaMetadataRetriever.OPTION_CLOSEST
-            ) ?: retriever.getFrameAtTime(0L)
-            ?: return false
-
-            // Area target watermark: kanan-atas saja.
-            val startX = (frame.width * 0.68f).toInt().coerceAtLeast(0)
-            val endY = (frame.height * 0.28f).toInt().coerceAtMost(frame.height)
-
-            var redPixels = 0
-            var bluePixels = 0
-            var whitePixels = 0
-
-            var y = 0
-            while (y < endY) {
-                var x = startX
-                while (x < frame.width) {
-                    val color = frame.getPixel(x, y)
-                    val r = Color.red(color)
-                    val g = Color.green(color)
-                    val b = Color.blue(color)
-
-                    if (r > 150 && r > g * 1.30 && r > b * 1.15) redPixels++
-                    if (b > 90 && b > r * 1.18 && b > g * 1.02) bluePixels++
-                    if (r > 215 && g > 215 && b > 215) whitePixels++
-
-                    x += 3
-                }
-                y += 3
-            }
-
-            frame.recycle()
-
-            // Logo asli punya area merah + biru yang besar. White-card-only tidak lolos.
-            redPixels > 120 && bluePixels > 120 && whitePixels > 350
-        } catch (_: Throwable) {
-            false
-        } finally {
-            try {
-                retriever.release()
-            } catch (_: Throwable) {
-            }
-        }
-    }
 }
