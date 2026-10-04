@@ -41,15 +41,32 @@ class WatermarkExporter(private val context: Context) {
             return
         }
 
-        val settings = StaticOverlaySettings.Builder()
+        val masjidLogo = BitmapFactory.decodeResource(
+            context.resources,
+            R.drawable.masjid_raya_logo,
+            BitmapFactory.Options().apply { inScaled = false }
+        ) ?: run {
+            onError(IllegalStateException("Logo Masjid Raya tidak dapat dibaca"))
+            return
+        }
+
+        val mediaSettings = StaticOverlaySettings.Builder()
             .setOverlayFrameAnchor(1f, 1f)
             .setBackgroundFrameAnchor(0.94f, 0.92f)
             .setScale(0.82f, 0.82f)
             .setAlphaScale(0.96f)
             .build()
 
-        val logoOverlay = BitmapOverlay.createStaticBitmapOverlay(originalLogo, settings)
-        val overlayEffect = OverlayEffect(listOf(logoOverlay))
+        val masjidSettings = StaticOverlaySettings.Builder()
+            .setOverlayFrameAnchor(-1f, 1f)
+            .setBackgroundFrameAnchor(-0.94f, 0.92f)
+            .setScale(0.82f, 0.82f)
+            .setAlphaScale(0.96f)
+            .build()
+
+        val mediaOverlay = BitmapOverlay.createStaticBitmapOverlay(originalLogo, mediaSettings)
+        val masjidOverlay = BitmapOverlay.createStaticBitmapOverlay(masjidLogo, masjidSettings)
+        val overlayEffect = OverlayEffect(listOf(masjidOverlay, mediaOverlay))
 
         val editedMediaItem = EditedMediaItem.Builder(
             MediaItem.fromUri(Uri.fromFile(input))
