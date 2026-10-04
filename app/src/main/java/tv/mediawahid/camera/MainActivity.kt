@@ -168,6 +168,19 @@ class MainActivity : ComponentActivity() {
         }
         root.addView(previewView, FrameLayout.LayoutParams(-1, -1))
 
+        val masjidWatermark = ImageView(this).apply {
+            setImageResource(R.drawable.masjid_raya_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            alpha = 0.96f
+        }
+        root.addView(
+            masjidWatermark,
+            FrameLayout.LayoutParams(dp(165), dp(95), Gravity.TOP or Gravity.START).apply {
+                topMargin = dp(14)
+                marginStart = dp(12)
+            }
+        )
+
         val watermark = ImageView(this).apply {
             setImageResource(R.drawable.media_wahid_logo_original)
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -192,9 +205,8 @@ class MainActivity : ComponentActivity() {
         }
         root.addView(
             timerText,
-            FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+            FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
                 topMargin = dp(18)
-                marginStart = dp(16)
             }
         )
 
