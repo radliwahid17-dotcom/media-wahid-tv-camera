@@ -282,6 +282,10 @@ class MainActivity : ComponentActivity() {
         val baseIntent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
             putExtra(MediaStore.EXTRA_OUTPUT, outputUri)
             putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 1)
+            // Samsung external capture can apply a short default limit unless
+            // the caller explicitly requests a longer recording duration.
+            // Six hours is intentionally well above the normal 50-minute use case.
+            putExtra(MediaStore.EXTRA_DURATION_LIMIT, 6 * 60 * 60)
             clipData = ClipData.newRawUri("MEDIA WAHID TV video", outputUri)
             addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
