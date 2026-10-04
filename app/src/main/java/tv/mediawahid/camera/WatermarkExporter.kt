@@ -98,24 +98,29 @@ class WatermarkExporter(private val context: Context) {
                     stopProgress()
                     transformer = null
 
-                    try {
-                        if (!output.exists() || output.length() <= 0L) {
-                            error("Hasil video kosong")
+                    if (!scaledLogo.isRecycled) scaledLogo.recycle()
+
+                    // Listener Transformer berjalan di application/main thread.
+                    // Verifikasi frame bisa berat pada video 4K/panjang, jadi wajib
+                    // dipindah ke worker agar UI tidak freeze/ANR.
+                    Thread {
+                        try {
+                            if (!output.exists() || output.length() <= 0L) {
+                                error("Hasil video kosong")
+                            }
+
+                            onProgress(100)
+
+                            if (!WatermarkVerifier.verifyVideo(output)) {
+                                output.delete()
+                                error("Logo MEDIA WAHID TV belum terdeteksi pada hasil video")
+                            }
+
+                            onCompleted()
+                        } catch (error: Throwable) {
+                            onError(error)
                         }
-
-                        onProgress(100)
-
-                        if (!WatermarkVerifier.verifyVideo(output)) {
-                            output.delete()
-                            error("Logo MEDIA WAHID TV belum terdeteksi pada hasil video")
-                        }
-
-                        onCompleted()
-                    } catch (error: Throwable) {
-                        onError(error)
-                    } finally {
-                        if (!scaledLogo.isRecycled) scaledLogo.recycle()
-                    }
+                    }.start()
                 }
 
                 override fun onError(
