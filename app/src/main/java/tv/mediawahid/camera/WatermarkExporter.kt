@@ -29,6 +29,7 @@ class WatermarkExporter(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var transformer: Transformer? = null
     private var progressRunnable: Runnable? = null
+    @Volatile private var cancelled = false
 
     fun export(
         inputUri: Uri,
@@ -38,6 +39,7 @@ class WatermarkExporter(private val context: Context) {
         onError: (Throwable) -> Unit,
     ) {
         cancel()
+        cancelled = false
         if (output.exists()) output.delete()
 
         val sourceLogo = BitmapFactory.decodeResource(
@@ -105,20 +107,24 @@ class WatermarkExporter(private val context: Context) {
                     // dipindah ke worker agar UI tidak freeze/ANR.
                     Thread {
                         try {
+                            if (cancelled) return@Thread
+
                             if (!output.exists() || output.length() <= 0L) {
                                 error("Hasil video kosong")
                             }
 
                             onProgress(100)
 
+                            if (cancelled) return@Thread
+
                             if (!WatermarkVerifier.verifyVideo(output)) {
                                 output.delete()
                                 error("Logo MEDIA WAHID TV belum terdeteksi pada hasil video")
                             }
 
-                            onCompleted()
+                            if (!cancelled) onCompleted()
                         } catch (error: Throwable) {
-                            onError(error)
+                            if (!cancelled) onError(error)
                         }
                     }.start()
                 }
@@ -157,6 +163,7 @@ class WatermarkExporter(private val context: Context) {
     }
 
     fun cancel() {
+        cancelled = true
         stopProgress()
         try {
             transformer?.cancel()
