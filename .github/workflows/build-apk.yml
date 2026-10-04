@@ -37,7 +37,7 @@ jobs:
         run: |
           test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
           echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
-          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "5860"
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "5868"
 
           cat > /tmp/VerifyImage.java <<'EOF'
           import javax.imageio.ImageIO;
