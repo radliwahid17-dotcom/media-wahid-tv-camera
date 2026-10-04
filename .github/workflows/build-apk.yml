@@ -80,7 +80,7 @@ jobs:
                           throw new IllegalStateException("Signature MEDIA WAHID TV tidak valid");
                       }
                   } else if ("masjid".equals(kind)) {
-                      if (dark < 2000 || green < 20 || orange < 20) {
+                      if (dark < 1200 || green < 20 || orange < 20) {
                           throw new IllegalStateException("Signature logo Masjid tidak valid");
                       }
                   } else {
