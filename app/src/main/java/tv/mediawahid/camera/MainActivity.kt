@@ -193,7 +193,7 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(20), dp(28), dp(20), dp(28))
         }
-        scroll.addView(content, ScrollView.LayoutParams(-1, -2))
+        scroll.addView(content, FrameLayout.LayoutParams(-1, -2))
 
         val mediaLogo = ImageView(this).apply {
             setImageResource(R.drawable.media_wahid_logo_original)
