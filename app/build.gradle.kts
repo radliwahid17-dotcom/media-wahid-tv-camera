@@ -59,8 +59,8 @@ val generateOriginalLogo by tasks.registering {
 
 val generateMasjidLogo by tasks.registering {
     doLast {
-        val sourceDir = file("src/main/masjid-logo-source")
-        val encoded = (1..9).joinToString("") { index ->
+        val sourceDir = file("src/main/masjid-logo-v3")
+        val encoded = (1..8).joinToString("") { index ->
             file("$sourceDir/logo.part$index.b64").readText().trim()
         }
         val output = file("src/main/res/drawable-nodpi/masjid_raya_logo.jpg")
