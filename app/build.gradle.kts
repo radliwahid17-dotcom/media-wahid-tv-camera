@@ -41,3 +41,20 @@ dependencies {
     implementation("androidx.media3:media3-transformer:$media3")
     implementation("androidx.media3:media3-effect:$media3")
 }
+
+
+val generateOriginalLogo by tasks.registering {
+    doLast {
+        val sourceDir = file("src/main/logo-source")
+        val encoded = (1..5).joinToString("") { index ->
+            file("$sourceDir/logo.part$index.b64").readText().trim()
+        }
+        val output = file("src/main/res/drawable-nodpi/media_wahid_logo_original.jpg")
+        output.parentFile.mkdirs()
+        output.writeBytes(java.util.Base64.getDecoder().decode(encoded))
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(generateOriginalLogo)
+}
