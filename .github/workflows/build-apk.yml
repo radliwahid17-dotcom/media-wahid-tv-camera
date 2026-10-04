@@ -68,11 +68,11 @@ jobs:
           fi
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v3.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v3.0.3.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MEDIA-WAHID-TV-APK-v3
-          path: MEDIA-WAHID-TV-Camera-v3.0.apk
+          path: MEDIA-WAHID-TV-Camera-v3.0.3.apk
           retention-days: 30
