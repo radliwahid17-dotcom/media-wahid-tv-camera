@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_NAME = "media_wahid_camera"
         private const val KEY_TEMPLATE = "selected_template"
         private const val KEY_PENDING_TEMPLATE = "pending_capture_template"
+        private const val KEY_PENDING_PHOTO_PATH = "pending_photo_path"
     }
 
     private lateinit var root: FrameLayout
@@ -101,7 +102,9 @@ class MainActivity : ComponentActivity() {
             preferences.getString(KEY_PENDING_TEMPLATE, selectedTemplate.storageValue)
         )
 
-        val captureFile = currentPhotoFile
+        val captureFile = currentPhotoFile ?: preferences
+            .getString(KEY_PENDING_PHOTO_PATH, null)
+            ?.let(::File)
         val returnedUri = result.data?.data
 
         val usableFile = when {
@@ -114,7 +117,7 @@ class MainActivity : ComponentActivity() {
             processAndSavePhoto(usableFile, pendingTemplate)
         } else {
             captureFile?.delete()
-            currentPhotoFile = null
+            clearPendingPhotoPath()
 
             showReadyState(
                 if (result.resultCode == Activity.RESULT_CANCELED) {
@@ -135,6 +138,10 @@ class MainActivity : ComponentActivity() {
         pendingTemplate = WatermarkTemplate.fromStorage(
             preferences.getString(KEY_PENDING_TEMPLATE, selectedTemplate.storageValue)
         )
+        currentPhotoFile = preferences
+            .getString(KEY_PENDING_PHOTO_PATH, null)
+            ?.let(::File)
+            ?.takeIf { it.exists() }
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -562,6 +569,9 @@ class MainActivity : ComponentActivity() {
 
         currentPhotoFile?.delete()
         currentPhotoFile = captureFile
+        preferences.edit()
+            .putString(KEY_PENDING_PHOTO_PATH, captureFile.absolutePath)
+            .apply()
 
         val outputUri = FileProvider.getUriForFile(
             this,
@@ -597,7 +607,7 @@ class MainActivity : ComponentActivity() {
         } catch (_: Throwable) {
             cameraLaunchInProgress = false
             captureFile.delete()
-            currentPhotoFile = null
+            clearPendingPhotoPath()
             showReadyState("Aplikasi kamera foto tidak ditemukan")
 
             Toast.makeText(
@@ -611,6 +621,13 @@ class MainActivity : ComponentActivity() {
     private fun persistPendingTemplate() {
         preferences.edit()
             .putString(KEY_PENDING_TEMPLATE, pendingTemplate.storageValue)
+            .apply()
+    }
+
+    private fun clearPendingPhotoPath() {
+        currentPhotoFile = null
+        preferences.edit()
+            .remove(KEY_PENDING_PHOTO_PATH)
             .apply()
     }
 
@@ -732,7 +749,7 @@ class MainActivity : ComponentActivity() {
             try {
                 PhotoWatermarker(this).process(rawFile, watermarked, template)
                 rawFile.delete()
-                currentPhotoFile = null
+                clearPendingPhotoPath()
 
                 runOnUiThread {
                     try {
@@ -764,7 +781,7 @@ class MainActivity : ComponentActivity() {
             } catch (error: Throwable) {
                 rawFile.delete()
                 watermarked.delete()
-                currentPhotoFile = null
+                clearPendingPhotoPath()
 
                 runOnUiThread {
                     setProcessing(false)
