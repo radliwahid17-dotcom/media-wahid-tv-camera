@@ -1,19 +1,30 @@
-# MEDIA WAHID TV — One Button Camera
+# MEDIA WAHID TV Camera v3
 
-Aplikasi Android super sederhana untuk MEDIA WAHID TV.
+Aplikasi Android khusus MEDIA WAHID TV dengan fokus utama pada hasil yang aman untuk dipakai di lapangan.
 
-## Cara pakai
-1. Buka aplikasi.
-2. Izinkan **Kamera** dan **Mikrofon** saat pertama kali.
-3. Arahkan kamera.
-4. Tekan tombol merah **REKAM**.
-5. Tekan tombol yang sama (**STOP**) untuk selesai.
-6. Tunggu tulisan **VIDEO TERSIMPAN ✓**.
+## Prinsip v3
 
-Video otomatis masuk ke **Galeri → Movies → MEDIA WAHID TV** dan watermark MEDIA WAHID TV ditanam ke hasil video.
+- Rekam memakai kamera bawaan Samsung agar fitur kamera tetap normal.
+- Video panjang mengikuti kemampuan Samsung Camera, bukan timer buatan aplikasi.
+- Kamera depan/belakang dan fitur kamera tetap dikelola aplikasi kamera bawaan.
+- Setelah video selesai, pilih rekaman terakhir.
+- Aplikasi menanam logo MEDIA WAHID TV dengan Media3 Transformer.
+- Hasil tidak disimpan ke Galeri sampai watermark diverifikasi pada frame hasil.
+- Foto juga diverifikasi setelah watermark ditanam.
+- File asli dari Samsung Camera tidak dihapus.
+- Jika proses watermark gagal, aplikasi gagal secara aman dan tidak mengklaim sukses.
 
-## Portrait / landscape
-Putar HP **sebelum** menekan REKAM. Aplikasi mengikuti posisi HP. Saat REC dimulai, orientasi dikunci supaya video tidak berputar di tengah rekaman.
+## Lokasi hasil
 
-## APK
-Setiap perubahan di branch `main` otomatis menjalankan GitHub Actions dan menghasilkan artifact bernama **MEDIA-WAHID-TV-APK**.
+- Video: Galeri → Movies → MEDIA WAHID TV
+- Foto: Galeri → Pictures → MEDIA WAHID TV
+
+## Build gate
+
+GitHub Actions menolak build jika:
+- source logo rusak,
+- logo di dalam APK tidak bisa di-decode,
+- masih ada referensi/resource Masjid lama,
+- compile atau Android lint gagal.
+
+Artifact final: **MEDIA-WAHID-TV-APK-v3**

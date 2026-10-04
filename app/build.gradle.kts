@@ -11,8 +11,8 @@ android {
         applicationId = "tv.mediawahid.camera"
         minSdk = 29
         targetSdk = 35
-        versionCode = 16
-        versionName = "2.7"
+        versionCode = 17
+        versionName = "3.0"
     }
 
     compileOptions {
@@ -29,14 +29,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
 
-    val cameraX = "1.4.1"
-    implementation("androidx.camera:camera-core:$cameraX")
-    implementation("androidx.camera:camera-camera2:$cameraX")
-    implementation("androidx.camera:camera-lifecycle:$cameraX")
-    implementation("androidx.camera:camera-view:$cameraX")
-    implementation("androidx.camera:camera-video:$cameraX")
-
-    val media3 = "1.10.1"
+    val media3 = "1.11.1"
     implementation("androidx.media3:media3-common:$media3")
     implementation("androidx.media3:media3-transformer:$media3")
     implementation("androidx.media3:media3-effect:$media3")

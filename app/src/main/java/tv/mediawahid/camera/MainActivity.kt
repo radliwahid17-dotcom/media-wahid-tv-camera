@@ -5,11 +5,13 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.StatFs
 import android.provider.MediaStore
 import android.view.Gravity
 import android.view.View
@@ -21,6 +23,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
@@ -38,20 +41,19 @@ class MainActivity : ComponentActivity() {
     private lateinit var photoButton: TextView
     private lateinit var processingPanel: View
     private lateinit var processingTitle: TextView
+    private lateinit var processingDetail: TextView
+    private lateinit var processingProgress: ProgressBar
     private lateinit var statusText: TextView
 
-    private var currentVideoFile: File? = null
     private var currentPhotoFile: File? = null
     private var cameraLaunchInProgress = false
+    private var activeExporter: WatermarkExporter? = null
 
     private val videoLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        // Full Samsung Camera mode intentionally does not return the recorded
-        // file to us. Once the user exits the camera, open Android's video
-        // picker so the just-recorded full-quality file can be watermarked.
         cameraLaunchInProgress = false
-        statusText.text = "Pilih video yang baru direkam..."
+        statusText.text = "Pilih rekaman yang baru dibuat"
         videoPickerLauncher.launch(
             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
         )
@@ -64,7 +66,6 @@ class MainActivity : ComponentActivity() {
             showReadyState("Video belum dipilih")
             return@registerForActivityResult
         }
-
         processAndSaveVideo(uri)
     }
 
@@ -91,7 +92,7 @@ class MainActivity : ComponentActivity() {
                 if (result.resultCode == Activity.RESULT_CANCELED) {
                     "Foto dibatalkan"
                 } else {
-                    "Foto belum diterima. Coba foto lagi."
+                    "Foto belum diterima. Coba lagi."
                 }
             )
         }
@@ -103,13 +104,26 @@ class MainActivity : ComponentActivity() {
         buildUi()
         hideSystemBars()
 
-        videoButton.setOnClickListener {
-            launchSamsungVideo()
-        }
+        videoButton.setOnClickListener { launchSamsungVideo() }
+        photoButton.setOnClickListener { launchSamsungPhoto() }
 
-        photoButton.setOnClickListener {
-            launchSamsungPhoto()
-        }
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (processingPanel.visibility == View.VISIBLE) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Video/foto sedang diproses. Tunggu sampai selesai.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
+                }
+            }
+        )
     }
 
     override fun onResume() {
@@ -117,9 +131,15 @@ class MainActivity : ComponentActivity() {
         if (::root.isInitialized) hideSystemBars()
     }
 
+    override fun onDestroy() {
+        activeExporter?.cancel()
+        activeExporter = null
+        super.onDestroy()
+    }
+
     private fun buildUi() {
         root = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(7, 9, 12))
+            setBackgroundColor(Color.rgb(6, 8, 11))
             keepScreenOn = true
         }
         setContentView(root)
@@ -127,7 +147,7 @@ class MainActivity : ComponentActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22), dp(34), dp(22), dp(28))
+            setPadding(dp(22), dp(30), dp(22), dp(26))
         }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
@@ -135,10 +155,7 @@ class MainActivity : ComponentActivity() {
             setImageResource(R.drawable.media_wahid_logo_original)
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
-        content.addView(
-            mediaLogo,
-            LinearLayout.LayoutParams(-1, dp(86))
-        )
+        content.addView(mediaLogo, LinearLayout.LayoutParams(-1, dp(92)))
 
         content.addView(TextView(this).apply {
             text = "MEDIA WAHID TV CAMERA"
@@ -146,38 +163,38 @@ class MainActivity : ComponentActivity() {
             textSize = 23f
             gravity = Gravity.CENTER
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, dp(38), 0, dp(6))
+            setPadding(0, dp(30), 0, dp(6))
         }, LinearLayout.LayoutParams(-1, -2))
 
         content.addView(TextView(this).apply {
-            text = "Kamera Samsung • Video & Foto • logo otomatis"
-            setTextColor(Color.rgb(181, 186, 194))
-            textSize = 14f
+            text = "V3 • Samsung Camera • Watermark Verified"
+            setTextColor(Color.rgb(165, 174, 187))
+            textSize = 13f
             gravity = Gravity.CENTER
         }, LinearLayout.LayoutParams(-1, -2))
 
         content.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
 
-        val badge = TextView(this).apply {
-            text = "PILIH MODE"
-            setTextColor(Color.rgb(218, 225, 235))
-            textSize = 12f
+        val verifiedBadge = TextView(this).apply {
+            text = "LOGO WAJIB TERVERIFIKASI"
+            setTextColor(Color.rgb(235, 239, 246))
+            textSize = 11f
             gravity = Gravity.CENTER
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(dp(18), dp(9), dp(18), dp(9))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(20).toFloat()
-                setColor(Color.rgb(25, 29, 36))
-                setStroke(dp(1), Color.rgb(53, 61, 73))
+                cornerRadius = dp(22).toFloat()
+                setColor(Color.rgb(22, 27, 34))
+                setStroke(dp(1), Color.rgb(58, 69, 83))
             }
         }
-        content.addView(badge, LinearLayout.LayoutParams(-2, -2).apply {
-            bottomMargin = dp(18)
+        content.addView(verifiedBadge, LinearLayout.LayoutParams(-2, -2).apply {
+            bottomMargin = dp(20)
         })
 
         videoButton = TextView(this).apply {
-            text = "VIDEO"
+            text = "REKAM VIDEO"
             setTextColor(Color.WHITE)
             textSize = 17f
             gravity = Gravity.CENTER
@@ -185,13 +202,13 @@ class MainActivity : ComponentActivity() {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(28).toFloat()
-                setColor(Color.rgb(230, 41, 50))
+                setColor(Color.rgb(225, 36, 48))
             }
         }
-        content.addView(videoButton, LinearLayout.LayoutParams(-1, dp(58)))
+        content.addView(videoButton, LinearLayout.LayoutParams(-1, dp(60)))
 
         photoButton = TextView(this).apply {
-            text = "FOTO"
+            text = "AMBIL FOTO"
             setTextColor(Color.WHITE)
             textSize = 17f
             gravity = Gravity.CENTER
@@ -199,30 +216,34 @@ class MainActivity : ComponentActivity() {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(28).toFloat()
-                setColor(Color.rgb(30, 35, 43))
-                setStroke(dp(1), Color.rgb(77, 86, 99))
+                setColor(Color.rgb(29, 35, 43))
+                setStroke(dp(1), Color.rgb(76, 87, 102))
             }
         }
-        content.addView(photoButton, LinearLayout.LayoutParams(-1, dp(58)).apply {
+        content.addView(photoButton, LinearLayout.LayoutParams(-1, dp(60)).apply {
             topMargin = dp(12)
         })
 
         statusText = TextView(this).apply {
-            text = "Selesai ambil gambar → logo MEDIA WAHID TV dipasang otomatis"
-            setTextColor(Color.rgb(150, 157, 168))
+            text = "Hasil baru disimpan setelah logo MEDIA WAHID TV lolos verifikasi"
+            setTextColor(Color.rgb(145, 154, 167))
             textSize = 12f
             gravity = Gravity.CENTER
-            setPadding(0, dp(15), 0, 0)
+            setPadding(dp(8), dp(17), dp(8), 0)
         }
         content.addView(statusText, LinearLayout.LayoutParams(-1, -2))
 
         val processing = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.argb(244, 7, 9, 12))
+            setPadding(dp(32), dp(32), dp(32), dp(32))
+            setBackgroundColor(Color.argb(250, 6, 8, 11))
             visibility = View.GONE
 
-            addView(ProgressBar(this@MainActivity), LinearLayout.LayoutParams(dp(64), dp(64)))
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.media_wahid_logo_original)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }, LinearLayout.LayoutParams(dp(190), dp(110)))
 
             processingTitle = TextView(this@MainActivity).apply {
                 text = "MEMPROSES..."
@@ -230,29 +251,42 @@ class MainActivity : ComponentActivity() {
                 textSize = 20f
                 gravity = Gravity.CENTER
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setPadding(0, dp(20), 0, 0)
+                setPadding(0, dp(24), 0, 0)
             }
             addView(processingTitle)
 
-            addView(TextView(this@MainActivity).apply {
-                text = "Memasang logo MEDIA WAHID TV"
-                setTextColor(Color.rgb(180, 186, 195))
+            processingDetail = TextView(this@MainActivity).apply {
+                text = "Memasang logo..."
+                setTextColor(Color.rgb(180, 188, 199))
                 textSize = 13f
                 gravity = Gravity.CENTER
-                setPadding(dp(28), dp(8), dp(28), 0)
+                setPadding(dp(20), dp(9), dp(20), 0)
+            }
+            addView(processingDetail)
+
+            processingProgress = ProgressBar(
+                this@MainActivity,
+                null,
+                android.R.attr.progressBarStyleHorizontal
+            ).apply {
+                max = 100
+                progress = 0
+                isIndeterminate = true
+            }
+            addView(processingProgress, LinearLayout.LayoutParams(-1, dp(10)).apply {
+                topMargin = dp(24)
             })
         }
+
         processingPanel = processing
         root.addView(processing, FrameLayout.LayoutParams(-1, -1))
     }
 
     private fun launchSamsungVideo() {
-        if (cameraLaunchInProgress) return
+        if (cameraLaunchInProgress || processingPanel.visibility == View.VISIBLE) return
 
-        currentVideoFile?.delete()
-        currentVideoFile = null
         cameraLaunchInProgress = true
-        statusText.text = "Samsung Camera full • rekam bebas, lalu kembali ke app"
+        statusText.text = "Rekam bebas di Samsung Camera, lalu kembali ke aplikasi"
 
         val baseIntent = Intent(MediaStore.INTENT_ACTION_VIDEO_CAMERA)
 
@@ -261,43 +295,40 @@ class MainActivity : ComponentActivity() {
                 setPackage("com.sec.android.app.camera")
             })
         } catch (_: ActivityNotFoundException) {
-            try {
-                videoLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
-            } catch (_: Throwable) {
-                cameraLaunchInProgress = false
-                showReadyState("Aplikasi kamera video tidak ditemukan")
-                Toast.makeText(
-                    this,
-                    "Kamera video bawaan tidak bisa dibuka.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            launchGenericVideo(baseIntent)
         } catch (_: SecurityException) {
-            try {
-                videoLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
-            } catch (_: Throwable) {
-                cameraLaunchInProgress = false
-                showReadyState("Aplikasi kamera video tidak ditemukan")
-                Toast.makeText(
-                    this,
-                    "Kamera video bawaan tidak bisa dibuka.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            launchGenericVideo(baseIntent)
+        }
+    }
+
+    private fun launchGenericVideo(baseIntent: Intent) {
+        try {
+            videoLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
+        } catch (_: Throwable) {
+            cameraLaunchInProgress = false
+            showReadyState("Aplikasi kamera video tidak ditemukan")
+            Toast.makeText(
+                this,
+                "Kamera video bawaan tidak bisa dibuka.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
     private fun launchSamsungPhoto() {
-        if (cameraLaunchInProgress) return
+        if (cameraLaunchInProgress || processingPanel.visibility == View.VISIBLE) return
 
-        val capturesDir = File(cacheDir, "captures").apply { mkdirs() }
-        val captureFile = File(capturesDir, "samsung_photo_${System.currentTimeMillis()}.jpg")
+        val capturesDir = File(externalCacheDir ?: cacheDir, "captures").apply { mkdirs() }
+        val captureFile = File(
+            capturesDir,
+            "media_wahid_photo_" + System.currentTimeMillis() + ".jpg"
+        )
         currentPhotoFile?.delete()
         currentPhotoFile = captureFile
 
         val outputUri = FileProvider.getUriForFile(
             this,
-            "$packageName.fileprovider",
+            packageName + ".fileprovider",
             captureFile
         )
 
@@ -309,149 +340,132 @@ class MainActivity : ComponentActivity() {
         }
 
         cameraLaunchInProgress = true
-        statusText.text = "Membuka foto Samsung..."
+        statusText.text = "Membuka Samsung Camera..."
 
-        launchPreferredSamsungCamera(baseIntent, captureFile, isVideo = false)
-    }
-
-    private fun launchPreferredSamsungCamera(
-        baseIntent: Intent,
-        fallbackFile: File,
-        isVideo: Boolean
-    ) {
         try {
-            val samsungIntent = Intent(baseIntent).apply {
+            photoLauncher.launch(Intent(baseIntent).apply {
                 setPackage("com.sec.android.app.camera")
-            }
-            if (isVideo) videoLauncher.launch(samsungIntent)
-            else photoLauncher.launch(samsungIntent)
+            })
         } catch (_: ActivityNotFoundException) {
-            launchGenericCamera(baseIntent, fallbackFile, isVideo)
+            launchGenericPhoto(baseIntent, captureFile)
         } catch (_: SecurityException) {
-            launchGenericCamera(baseIntent, fallbackFile, isVideo)
+            launchGenericPhoto(baseIntent, captureFile)
         }
     }
 
-    private fun launchGenericCamera(
-        baseIntent: Intent,
-        fallbackFile: File,
-        isVideo: Boolean
-    ) {
+    private fun launchGenericPhoto(baseIntent: Intent, captureFile: File) {
         try {
-            val genericIntent = Intent(baseIntent).apply { setPackage(null) }
-            if (isVideo) videoLauncher.launch(genericIntent)
-            else photoLauncher.launch(genericIntent)
+            photoLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
         } catch (_: Throwable) {
             cameraLaunchInProgress = false
-            fallbackFile.delete()
-            if (isVideo) currentVideoFile = null else currentPhotoFile = null
-            showReadyState("Aplikasi kamera tidak ditemukan")
+            captureFile.delete()
+            currentPhotoFile = null
+            showReadyState("Aplikasi kamera foto tidak ditemukan")
             Toast.makeText(
                 this,
-                "Kamera bawaan tidak bisa dibuka.",
+                "Kamera foto bawaan tidak bisa dibuka.",
                 Toast.LENGTH_LONG
             ).show()
         }
     }
 
-    private fun copyReturnedFileToCache(
-        uri: Uri,
-        prefix: String,
-        extension: String
-    ): File? {
-        return try {
-            val file = File(cacheDir, "${prefix}_${System.currentTimeMillis()}.$extension")
-            contentResolver.openInputStream(uri)?.use { input ->
-                file.outputStream().use { output -> input.copyTo(output) }
-            } ?: return null
-            file.takeIf { it.length() > 0L }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun setProcessing(isVideo: Boolean, visible: Boolean) {
-        processingTitle.text = if (isVideo) "MEMPROSES VIDEO..." else "MEMPROSES FOTO..."
-        processingPanel.visibility = if (visible) View.VISIBLE else View.GONE
-        videoButton.isEnabled = !visible
-        photoButton.isEnabled = !visible
-    }
-
     private fun processAndSaveVideo(inputUri: Uri) {
-        setProcessing(isVideo = true, visible = true)
-        val watermarked = File(cacheDir, "wahid_${System.currentTimeMillis()}.mp4")
+        if (!hasEnoughWorkingSpace(inputUri)) {
+            showReadyState("Ruang kosong belum cukup untuk proses video panjang")
+            Toast.makeText(
+                this,
+                "Kosongkan penyimpanan dulu. App butuh ruang sementara untuk merender video berlogo.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
 
-        WatermarkExporter(this).export(
+        setProcessing(
+            visible = true,
+            title = "MEMPROSES VIDEO",
+            detail = "Menanam logo MEDIA WAHID TV • 0%",
+            indeterminate = false
+        )
+
+        val exportDir = File(externalCacheDir ?: cacheDir, "exports").apply { mkdirs() }
+        val watermarked = File(
+            exportDir,
+            "media_wahid_" + System.currentTimeMillis() + ".mp4"
+        )
+
+        val exporter = WatermarkExporter(this)
+        activeExporter = exporter
+
+        exporter.export(
             inputUri = inputUri,
             output = watermarked,
+            onProgress = { progress ->
+                runOnUiThread {
+                    processingProgress.isIndeterminate = false
+                    processingProgress.progress = progress
+                    processingDetail.text =
+                        if (progress < 100) {
+                            "Menanam logo MEDIA WAHID TV • " + progress + "%"
+                        } else {
+                            "Memverifikasi watermark..."
+                        }
+                }
+            },
             onCompleted = {
                 runOnUiThread {
+                    activeExporter = null
                     try {
                         saveVideoToGallery(watermarked)
                         watermarked.delete()
-                        setProcessing(isVideo = true, visible = false)
-                        showReadyState("VIDEO TERSIMPAN ✓ • logo MEDIA WAHID TV terpasang")
-                        Toast.makeText(this, "VIDEO TERSIMPAN ✓", Toast.LENGTH_SHORT).show()
-                    } catch (_: Throwable) {
-                        setProcessing(isVideo = true, visible = false)
-                        showReadyState("Video belum berhasil disimpan")
-                        Toast.makeText(this, "Video belum berhasil disimpan.", Toast.LENGTH_LONG).show()
+                        setProcessing(false)
+                        showReadyState("VIDEO TERSIMPAN ✓ • WATERMARK TERVERIFIKASI")
+                        Toast.makeText(
+                            this,
+                            "VIDEO TERSIMPAN ✓ • LOGO TERVERIFIKASI",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } catch (error: Throwable) {
+                        setProcessing(false)
+                        showReadyState("Video berlogo selesai, tapi gagal disimpan ke Galeri")
+                        Toast.makeText(
+                            this,
+                            error.message ?: "Gagal menyimpan video.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
             },
-            onError = {
+            onError = { error ->
                 runOnUiThread {
+                    activeExporter = null
                     watermarked.delete()
-                    setProcessing(isVideo = true, visible = false)
-                    showReadyState("Pemrosesan video gagal. Coba pilih ulang.")
-                    Toast.makeText(this, "Video belum berhasil diproses.", Toast.LENGTH_LONG).show()
-                }
-            }
-        )
-    }
-
-    private fun processAndSaveVideo(rawFile: File) {
-        setProcessing(isVideo = true, visible = true)
-        val watermarked = File(cacheDir, "wahid_${System.currentTimeMillis()}.mp4")
-
-        WatermarkExporter(this).export(
-            input = rawFile,
-            output = watermarked,
-            onCompleted = {
-                runOnUiThread {
-                    rawFile.delete()
-                    currentVideoFile = null
-                    try {
-                        saveVideoToGallery(watermarked)
-                        watermarked.delete()
-                        setProcessing(isVideo = true, visible = false)
-                        showReadyState("VIDEO TERSIMPAN ✓ • logo MEDIA WAHID TV terpasang")
-                        Toast.makeText(this, "VIDEO TERSIMPAN ✓", Toast.LENGTH_SHORT).show()
-                    } catch (_: Throwable) {
-                        setProcessing(isVideo = true, visible = false)
-                        showReadyState("Video belum berhasil disimpan")
-                        Toast.makeText(this, "Video belum berhasil disimpan.", Toast.LENGTH_LONG).show()
-                    }
-                }
-            },
-            onError = {
-                runOnUiThread {
-                    rawFile.delete()
-                    watermarked.delete()
-                    currentVideoFile = null
-                    setProcessing(isVideo = true, visible = false)
-                    showReadyState("Pemrosesan video gagal. Rekam ulang.")
-                    Toast.makeText(this, "Video belum berhasil diproses.", Toast.LENGTH_LONG).show()
+                    setProcessing(false)
+                    showReadyState("Video tidak disimpan karena watermark belum terverifikasi")
+                    Toast.makeText(
+                        this,
+                        error.message ?: "Pemrosesan video gagal.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         )
     }
 
     private fun processAndSavePhoto(rawFile: File) {
-        setProcessing(isVideo = false, visible = true)
+        setProcessing(
+            visible = true,
+            title = "MEMPROSES FOTO",
+            detail = "Menanam dan memverifikasi logo MEDIA WAHID TV",
+            indeterminate = true
+        )
 
         Thread {
-            val watermarked = File(cacheDir, "wahid_photo_${System.currentTimeMillis()}.jpg")
+            val exportDir = File(externalCacheDir ?: cacheDir, "exports").apply { mkdirs() }
+            val watermarked = File(
+                exportDir,
+                "media_wahid_photo_" + System.currentTimeMillis() + ".jpg"
+            )
+
             try {
                 PhotoWatermarker(this).process(rawFile, watermarked)
                 rawFile.delete()
@@ -461,40 +475,119 @@ class MainActivity : ComponentActivity() {
                     try {
                         savePhotoToGallery(watermarked)
                         watermarked.delete()
-                        setProcessing(isVideo = false, visible = false)
-                        showReadyState("FOTO TERSIMPAN ✓ • logo MEDIA WAHID TV terpasang")
-                        Toast.makeText(this, "FOTO TERSIMPAN ✓", Toast.LENGTH_SHORT).show()
-                    } catch (_: Throwable) {
+                        setProcessing(false)
+                        showReadyState("FOTO TERSIMPAN ✓ • WATERMARK TERVERIFIKASI")
+                        Toast.makeText(
+                            this,
+                            "FOTO TERSIMPAN ✓ • LOGO TERVERIFIKASI",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } catch (error: Throwable) {
                         watermarked.delete()
-                        setProcessing(isVideo = false, visible = false)
-                        showReadyState("Foto belum berhasil disimpan")
-                        Toast.makeText(this, "Foto belum berhasil disimpan.", Toast.LENGTH_LONG).show()
+                        setProcessing(false)
+                        showReadyState("Foto berlogo selesai, tapi gagal disimpan ke Galeri")
+                        Toast.makeText(
+                            this,
+                            error.message ?: "Gagal menyimpan foto.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
                 rawFile.delete()
                 watermarked.delete()
                 currentPhotoFile = null
                 runOnUiThread {
-                    setProcessing(isVideo = false, visible = false)
-                    showReadyState("Pemrosesan foto gagal. Foto ulang.")
-                    Toast.makeText(this, "Foto belum berhasil diproses.", Toast.LENGTH_LONG).show()
+                    setProcessing(false)
+                    showReadyState("Foto tidak disimpan karena watermark belum terverifikasi")
+                    Toast.makeText(
+                        this,
+                        error.message ?: "Pemrosesan foto gagal.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }.start()
     }
 
+    private fun copyReturnedFileToCache(
+        uri: Uri,
+        prefix: String,
+        extension: String
+    ): File? {
+        return try {
+            val dir = File(externalCacheDir ?: cacheDir, "imports").apply { mkdirs() }
+            val file = File(
+                dir,
+                prefix + "_" + System.currentTimeMillis() + "." + extension
+            )
+            contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().buffered(1024 * 1024).use { output ->
+                    input.copyTo(output, 1024 * 1024)
+                }
+            } ?: return null
+            file.takeIf { it.length() > 0L }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun hasEnoughWorkingSpace(uri: Uri): Boolean {
+        val inputSize = try {
+            contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                descriptor.length
+            } ?: -1L
+        } catch (_: Throwable) {
+            -1L
+        }
+
+        val stat = StatFs((externalCacheDir ?: cacheDir).absolutePath)
+        val available = stat.availableBytes
+        val reserve = 512L * 1024L * 1024L
+
+        val required = if (inputSize > 0L) {
+            val doubled = if (inputSize > Long.MAX_VALUE / 2L) Long.MAX_VALUE else inputSize * 2L
+            if (doubled > Long.MAX_VALUE - reserve) Long.MAX_VALUE else doubled + reserve
+        } else {
+            2L * 1024L * 1024L * 1024L
+        }
+
+        return available > required
+    }
+
+    private fun setProcessing(
+        visible: Boolean,
+        title: String = "",
+        detail: String = "",
+        indeterminate: Boolean = true
+    ) {
+        processingPanel.visibility = if (visible) View.VISIBLE else View.GONE
+        videoButton.isEnabled = !visible
+        photoButton.isEnabled = !visible
+
+        if (visible) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            processingTitle.text = title
+            processingDetail.text = detail
+            processingProgress.progress = 0
+            processingProgress.isIndeterminate = indeterminate
+        } else {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
     private fun showReadyState(message: String) {
         statusText.text = message
-        videoButton.text = "VIDEO"
-        photoButton.text = "FOTO"
         videoButton.isEnabled = true
         photoButton.isEnabled = true
     }
 
     private fun saveVideoToGallery(file: File): Uri {
         val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "MEDIA_WAHID_TV_${System.currentTimeMillis()}.mp4")
+            put(
+                MediaStore.Video.Media.DISPLAY_NAME,
+                "MEDIA_WAHID_TV_" + System.currentTimeMillis() + ".mp4"
+            )
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
             put(
                 MediaStore.Video.Media.RELATIVE_PATH,
@@ -508,19 +601,30 @@ class MainActivity : ComponentActivity() {
             values
         ) ?: error("Tidak dapat membuat file video")
 
-        contentResolver.openOutputStream(uri)?.use { output ->
-            file.inputStream().use { input -> input.copyTo(output) }
-        } ?: error("Tidak dapat menulis video")
+        try {
+            contentResolver.openOutputStream(uri)?.buffered(1024 * 1024).use { output ->
+                requireNotNull(output) { "Tidak dapat membuka Galeri untuk video" }
+                file.inputStream().buffered(1024 * 1024).use { input ->
+                    input.copyTo(output, 1024 * 1024)
+                }
+            }
 
-        values.clear()
-        values.put(MediaStore.Video.Media.IS_PENDING, 0)
-        contentResolver.update(uri, values, null, null)
-        return uri
+            values.clear()
+            values.put(MediaStore.Video.Media.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+            return uri
+        } catch (error: Throwable) {
+            contentResolver.delete(uri, null, null)
+            throw error
+        }
     }
 
     private fun savePhotoToGallery(file: File): Uri {
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "MEDIA_WAHID_TV_${System.currentTimeMillis()}.jpg")
+            put(
+                MediaStore.Images.Media.DISPLAY_NAME,
+                "MEDIA_WAHID_TV_" + System.currentTimeMillis() + ".jpg"
+            )
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             put(
                 MediaStore.Images.Media.RELATIVE_PATH,
@@ -534,14 +638,22 @@ class MainActivity : ComponentActivity() {
             values
         ) ?: error("Tidak dapat membuat file foto")
 
-        contentResolver.openOutputStream(uri)?.use { output ->
-            file.inputStream().use { input -> input.copyTo(output) }
-        } ?: error("Tidak dapat menulis foto")
+        try {
+            contentResolver.openOutputStream(uri)?.buffered(1024 * 1024).use { output ->
+                requireNotNull(output) { "Tidak dapat membuka Galeri untuk foto" }
+                file.inputStream().buffered(1024 * 1024).use { input ->
+                    input.copyTo(output, 1024 * 1024)
+                }
+            }
 
-        values.clear()
-        values.put(MediaStore.Images.Media.IS_PENDING, 0)
-        contentResolver.update(uri, values, null, null)
-        return uri
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+            return uri
+        } catch (error: Throwable) {
+            contentResolver.delete(uri, null, null)
+            throw error
+        }
     }
 
     private fun hideSystemBars() {

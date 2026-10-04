@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout source
@@ -24,6 +24,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+
+      - name: Reject legacy Masjid resources
+        run: |
+          if grep -Rni "masjid" app/src/main; then
+            echo "Legacy Masjid reference detected"
+            exit 1
+          fi
 
       - name: Verify source logo can decode
         run: |
@@ -44,8 +51,8 @@ jobs:
           EOF
           java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
 
-      - name: Build debug APK
-        run: gradle --no-daemon :app:assembleDebug
+      - name: Build and lint
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug
 
       - name: Verify logo inside APK can decode
         run: |
@@ -53,12 +60,19 @@ jobs:
           test -s /tmp/media_wahid_logo_original.jpg
           java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg
 
+      - name: Verify APK contains no legacy Masjid assets
+        run: |
+          if unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -i "masjid"; then
+            echo "Legacy Masjid asset found inside APK"
+            exit 1
+          fi
+
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v3.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MEDIA-WAHID-TV-APK
-          path: MEDIA-WAHID-TV-Camera.apk
+          name: MEDIA-WAHID-TV-APK-v3
+          path: MEDIA-WAHID-TV-Camera-v3.0.apk
           retention-days: 30
