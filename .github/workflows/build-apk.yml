@@ -25,8 +25,14 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      - name: Reconstruct original logo
+        run: |
+          cat app/src/main/logo-source/logo.part*.b64 | tr -d '\\n\\r ' | base64 -d > app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
+
       - name: Verify original logo asset
-        run: echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
+        run: |
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
+          echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
