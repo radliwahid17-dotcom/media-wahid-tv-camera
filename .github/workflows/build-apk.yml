@@ -34,6 +34,10 @@ jobs:
           test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
           echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
 
+      - name: Reconstruct Masjid logo
+        run: |
+          cat app/src/main/masjid-logo-v4/logo.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
+
       - name: Verify Masjid logo asset
         run: |
           test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "13310"
