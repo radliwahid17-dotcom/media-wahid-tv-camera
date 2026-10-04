@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var recordButton: RecordButtonView
     private lateinit var actionText: TextView
     private lateinit var timerText: TextView
+    private lateinit var pauseResumeButton: TextView
     private lateinit var switchCameraButton: TextView
     private lateinit var zoomOutButton: TextView
     private lateinit var zoomInButton: TextView
@@ -69,6 +70,9 @@ class MainActivity : ComponentActivity() {
     private var videoCapture: VideoCapture<Recorder>? = null
     private var activeRecording: Recording? = null
     private var recordingStartedAt = 0L
+    private var pausedAccumulatedMs = 0L
+    private var pauseStartedAt = 0L
+    private var isRecordingPaused = false
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var cameraSwitchEnabled = true
     private var activeCamera: Camera? = null
@@ -94,12 +98,14 @@ class MainActivity : ComponentActivity() {
     private val timerRunnable = object : Runnable {
         override fun run() {
             if (activeRecording == null) return
+            val now = System.currentTimeMillis()
+            val effectiveNow = if (isRecordingPaused) pauseStartedAt else now
             val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(
-                System.currentTimeMillis() - recordingStartedAt
+                effectiveNow - recordingStartedAt - pausedAccumulatedMs
             )
             timerText.text = String.format(
                 Locale.US,
-                "● REC  %02d:%02d",
+                if (isRecordingPaused) "Ⅱ PAUSE  %02d:%02d" else "● REC  %02d:%02d",
                 totalSeconds / 60,
                 totalSeconds % 60
             )
@@ -121,6 +127,11 @@ class MainActivity : ComponentActivity() {
         switchCameraButton.setOnClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             switchCamera()
+        }
+
+        pauseResumeButton.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            togglePauseResume()
         }
 
         zoomOutButton.setOnClickListener {
@@ -224,7 +235,24 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER
         }
         recordButton = RecordButtonView(this)
+        pauseResumeButton = TextView(this).apply {
+            text = "PAUSE"
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(22).toFloat()
+                setColor(Color.argb(190, 0, 0, 0))
+                setStroke(dp(1), Color.argb(210, 255, 255, 255))
+            }
+        }
         bottom.addView(actionText, LinearLayout.LayoutParams(-2, -2).apply {
+            bottomMargin = dp(8)
+        })
+        bottom.addView(pauseResumeButton, LinearLayout.LayoutParams(dp(112), dp(44)).apply {
             bottomMargin = dp(10)
         })
         bottom.addView(recordButton, LinearLayout.LayoutParams(dp(106), dp(106)))
@@ -371,6 +399,25 @@ class MainActivity : ComponentActivity() {
         camera.cameraControl.setZoomRatio(currentZoomRatio)
     }
 
+    private fun togglePauseResume() {
+        val recording = activeRecording ?: return
+
+        if (isRecordingPaused) {
+            recording.resume()
+            pausedAccumulatedMs += System.currentTimeMillis() - pauseStartedAt
+            pauseStartedAt = 0L
+            isRecordingPaused = false
+            pauseResumeButton.text = "PAUSE"
+            actionText.text = "STOP"
+        } else {
+            recording.pause()
+            pauseStartedAt = System.currentTimeMillis()
+            isRecordingPaused = true
+            pauseResumeButton.text = "LANJUT"
+            actionText.text = "STOP"
+        }
+    }
+
     private fun switchCamera() {
         if (!cameraSwitchEnabled || activeRecording != null) return
 
@@ -464,8 +511,9 @@ class MainActivity : ComponentActivity() {
         val step = exposureState.exposureCompensationStep.toFloat()
         if (step <= 0f) return
 
-        // v1.5: dinaikkan lagi dari v1.4 agar kamera terasa jelas lebih terang.
-        val targetIndex = (1.2f / step)
+        // v1.7: dinaikkan lagi agar hasil video lebih terang pada kondisi indoor.
+        // Tetap di-clamp ke batas exposure yang didukung kamera perangkat.
+        val targetIndex = (1.8f / step)
             .roundToInt()
             .coerceIn(range.lower, range.upper)
 
@@ -490,6 +538,11 @@ class MainActivity : ComponentActivity() {
         recordButton.isRecording = true
         actionText.text = "STOP"
         timerText.visibility = View.VISIBLE
+        pauseResumeButton.text = "PAUSE"
+        pauseResumeButton.visibility = View.VISIBLE
+        isRecordingPaused = false
+        pausedAccumulatedMs = 0L
+        pauseStartedAt = 0L
         recordingStartedAt = System.currentTimeMillis()
 
         activeRecording = pending.start(ContextCompat.getMainExecutor(this)) { event ->
@@ -499,6 +552,11 @@ class MainActivity : ComponentActivity() {
                     activeRecording = null
                     timerHandler.removeCallbacks(timerRunnable)
                     timerText.visibility = View.GONE
+                    pauseResumeButton.visibility = View.GONE
+                    pauseResumeButton.text = "PAUSE"
+                    isRecordingPaused = false
+                    pausedAccumulatedMs = 0L
+                    pauseStartedAt = 0L
                     recordButton.isRecording = false
                     actionText.text = "REKAM"
 
