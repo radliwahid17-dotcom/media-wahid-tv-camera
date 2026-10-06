@@ -5,6 +5,10 @@ on:
     branches: [ main, final-v5-live-watermark ]
   workflow_dispatch:
 
+concurrency:
+  group: final-camera-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   final-regression:
     runs-on: ubuntu-latest
