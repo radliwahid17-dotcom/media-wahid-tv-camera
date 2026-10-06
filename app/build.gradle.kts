@@ -26,6 +26,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.annotation:annotation-experimental:1.10.0")
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-ktx:1.11.0")
 
