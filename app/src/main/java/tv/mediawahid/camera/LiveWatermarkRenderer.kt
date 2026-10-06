@@ -10,6 +10,7 @@ import android.graphics.PorterDuff
 import android.graphics.RectF
 import androidx.camera.effects.Frame
 import androidx.camera.view.PreviewView
+import androidx.core.graphics.withSave
 import kotlin.math.roundToInt
 
 class LiveWatermarkRenderer(
@@ -59,17 +60,15 @@ class LiveWatermarkRenderer(
         uiToBuffer.set(uiToSensor)
         uiToBuffer.postConcat(frame.sensorToBufferTransform)
 
-        val checkpoint = canvas.save()
-        canvas.setMatrix(uiToBuffer)
-
-        drawTemplate(
-            viewWidth = viewWidth,
-            viewHeight = viewHeight,
-            canvas = canvas,
-            activeTemplate = template
-        )
-
-        canvas.restoreToCount(checkpoint)
+        canvas.withSave {
+            setMatrix(uiToBuffer)
+            drawTemplate(
+                viewWidth = viewWidth,
+                viewHeight = viewHeight,
+                canvas = this,
+                activeTemplate = template
+            )
+        }
         return true
     }
 
