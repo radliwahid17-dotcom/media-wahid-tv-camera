@@ -42,6 +42,7 @@ import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.effects.OverlayEffect
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.ExperimentalPersistentRecording
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.PendingRecording
@@ -634,6 +635,7 @@ class MainActivity : ComponentActivity() {
             if (!dualSelected) "✓ MEDIA ONLY" else "MEDIA ONLY"
     }
 
+    @OptIn(ExperimentalPersistentRecording::class)
     @SuppressLint("MissingPermission")
     private fun startRecording() {
         val capture = videoCapture ?: return
