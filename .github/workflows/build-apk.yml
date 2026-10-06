@@ -41,7 +41,9 @@ jobs:
           set -eux
           grep -R 'versionName = "5.0.0"' app/build.gradle.kts
           grep -R 'val cameraX = "1.6.2"' app/build.gradle.kts
-          grep -R 'CameraEffect.PREVIEW or CameraEffect.VIDEO_CAPTURE' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
+          grep -R 'CameraEffect.PREVIEW or' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
+          grep -R 'CameraEffect.VIDEO_CAPTURE or' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
+          grep -R 'CameraEffect.IMAGE_CAPTURE' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
           grep -R 'asPersistentRecording()' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
           grep -R 'Quality.FHD' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
           grep -R 'MediaStoreOutputOptions' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
@@ -49,6 +51,7 @@ jobs:
           grep -R 'liveWatermarkRenderer.draw(frame)' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
 
           ! grep -R 'EXTRA_DURATION_LIMIT' app/src/main/java || exit 1
+          ! grep -R 'setFileSizeLimit' app/src/main/java || exit 1
           ! grep -R 'ACTION_VIDEO_CAPTURE' app/src/main/java || exit 1
           ! grep -R 'INTENT_ACTION_VIDEO_CAMERA' app/src/main/java || exit 1
           ! grep -R 'PickVisualMedia' app/src/main/java || exit 1
