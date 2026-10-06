@@ -43,7 +43,7 @@ jobs:
           RENDERER=app/src/main/java/tv/mediawahid/camera/LiveWatermarkRenderer.kt
           GRADLE=app/build.gradle.kts
 
-          grep -q 'versionName = "5.0.0"' "$GRADLE"
+          grep -q 'versionName = "5.0.1"' "$GRADLE"
           grep -q 'cameraX = "1.6.2"' "$GRADLE"
           grep -q 'Quality.FHD' "$MAIN"
           grep -q 'asPersistentRecording()' "$MAIN"
@@ -56,6 +56,7 @@ jobs:
           grep -q 'TARGET_VIDEO_BITRATE = 8_000_000' "$MAIN"
           grep -q 'MIN_START_FREE_BYTES = 8L' "$MAIN"
           grep -q 'STOP_FREE_BYTES = 1L' "$MAIN"
+          grep -q 'params.screenBrightness = 1.0f' "$MAIN"
           grep -q '@OptIn(ExperimentalPersistentRecording::class)' "$MAIN"
           grep -q 'overlayFailed = true' "$MAIN"
           grep -q 'sensorToBufferTransform' "$RENDERER"
@@ -90,15 +91,15 @@ jobs:
           test -s "$APK"
           unzip -l "$APK" | grep -q 'media_wahid_logo_original'
           unzip -l "$APK" | grep -q 'masjid_raya_logo'
-          cp "$APK" MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk
-          sha256sum MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk > MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.sha256
+          cp "$APK" MEDIA-WAHID-TV-Camera-v5.0.1-BRIGHT-STABLE.apk
+          sha256sum MEDIA-WAHID-TV-Camera-v5.0.1-BRIGHT-STABLE.apk > MEDIA-WAHID-TV-Camera-v5.0.1-BRIGHT-STABLE.sha256
 
       - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
-          name: MEDIA-WAHID-TV-Camera-v5.0.0-FINAL
+          name: MEDIA-WAHID-TV-Camera-v5.0.1-BRIGHT-STABLE
           path: |
-            MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk
-            MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.sha256
+            MEDIA-WAHID-TV-Camera-v5.0.1-BRIGHT-STABLE.apk
+            MEDIA-WAHID-TV-Camera-v5.0.1-BRIGHT-STABLE.sha256
           if-no-files-found: error
           retention-days: 30
