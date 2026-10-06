@@ -65,7 +65,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val PREFS_NAME = "media_wahid_camera"
         private const val KEY_TEMPLATE = "selected_template"
-        private const val MIN_START_FREE_BYTES = 12L * 1024L * 1024L * 1024L
+        private const val TARGET_VIDEO_BITRATE = 8_000_000
+        private const val MIN_START_FREE_BYTES = 8L * 1024L * 1024L * 1024L
         private const val STOP_FREE_BYTES = 1L * 1024L * 1024L * 1024L
     }
 
@@ -455,6 +456,7 @@ class MainActivity : ComponentActivity() {
                     FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
                 )
             )
+            .setTargetVideoEncodingBitRate(TARGET_VIDEO_BITRATE)
             .build()
 
         videoCapture = VideoCapture.withOutput(recorder).also {
@@ -537,7 +539,7 @@ class MainActivity : ComponentActivity() {
         if (freeBytes in 0 until MIN_START_FREE_BYTES) {
             Toast.makeText(
                 this,
-                "Untuk target 1,5 jam FHD, sisakan minimal 12 GB storage kosong.",
+                "Untuk target 1,5 jam FHD, sisakan minimal 8 GB storage kosong.",
                 Toast.LENGTH_LONG
             ).show()
             setStatus("Storage belum aman untuk target 90 menit")
