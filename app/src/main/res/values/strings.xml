@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MEDIA WAHID TV</string>
+    <string name="timer_zero">00:00:00</string>
+    <string name="status_camera_permission_required">Izin kamera wajib untuk menjalankan aplikasi</string>
+    <string name="status_preparing_camera">Menyiapkan kamera dan watermark…</string>
+    <string name="button_dual_template">MASJID + MEDIA</string>
+    <string name="button_dual_template_active">✓ MASJID + MEDIA</string>
+    <string name="button_media_only">MEDIA ONLY</string>
+    <string name="button_media_only_active">✓ MEDIA ONLY</string>
+    <string name="button_switch_camera">GANTI</string>
+    <string name="button_photo">FOTO</string>
+    <string name="button_record">REKAM</string>
+    <string name="button_stop">STOP</string>
+    <string name="button_saving">MENYIMPAN</string>
+    <string name="button_flash">FLASH</string>
+    <string name="button_flash_on">FLASH ON</string>
+    <string name="camera_footer">FHD • watermark langsung tertanam • tidak perlu render ulang</string>
+    <string name="status_ready_storage">Siap • watermark live aktif • %1$s</string>
+    <string name="status_watermark_setup_failed">Watermark gagal disiapkan</string>
+    <string name="status_watermark_runtime_failed">Watermark error • rekaman dihentikan demi keamanan hasil</string>
+    <string name="status_camera_blocked_watermark">Kamera tidak dibuka karena watermark belum aman</string>
+    <string name="status_opening_camera">Membuka kamera…</string>
+    <string name="status_camera_open_failed">Kamera gagal dibuka</string>
+    <string name="status_camera_waiting_watermark">Kamera aktif • menunggu watermark live…</string>
+    <string name="status_camera_config_failed">Kamera gagal dikonfigurasi</string>
+    <string name="status_template_active">Template aktif • %1$s</string>
+    <string name="status_recording_starting">Memulai rekaman • template terkunci</string>
+    <string name="status_recording_start_failed">Rekaman gagal dimulai</string>
+    <string name="status_recording_template">REC • %1$s</string>
+    <string name="status_recording_metrics">REC • %1$s • %2$s</string>
+    <string name="status_finalizing_file">Menyelesaikan file…</string>
+    <string name="status_stop_failed">Gagal menghentikan rekaman dengan aman</string>
+    <string name="status_video_discarded_watermark">Video dibuang karena watermark tidak terjamin</string>
+    <string name="status_video_saved">VIDEO TERSIMPAN ✓ • %1$s • watermark tertanam</string>
+    <string name="status_recorder_recovery_failed">Recorder belum berhasil dipulihkan</string>
+    <string name="status_photo_saved">FOTO TERSIMPAN ✓ • %1$s</string>
+    <string name="status_photo_failed">Foto gagal disimpan</string>
+    <string name="status_camera_switched_recording">REC • kamera diganti • file tetap satu</string>
+    <string name="status_camera_switched_idle">Kamera diganti • watermark tetap aktif</string>
+</resources>

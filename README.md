@@ -1,48 +1,36 @@
-# MEDIA WAHID TV Camera v4.0.5 — Final Masjid Logo
+# MEDIA WAHID TV Camera v5.0.0 — Final Live Watermark
 
-Satu aplikasi Android dengan dua template watermark yang bisa dipilih sebelum foto atau video.
+Versi final mengganti alur lama "buka Samsung Camera → pilih video → render ulang" dengan CameraX native di dalam aplikasi.
+
+## Tujuan utama
+- Rekaman panjang tanpa batas durasi buatan aplikasi.
+- Target utama FHD (1920×1080) dengan fallback aman bila perangkat tidak mendukung. Bitrate ditargetkan 8 Mbps untuk endurance dan ukuran file yang lebih terprediksi.
+- Watermark ditanam langsung saat frame direkam, jadi setelah tombol STOP tidak ada proses render video panjang.
+- Video langsung disimpan ke Galeri → Movies → MEDIA WAHID TV.
+- Foto langsung disimpan ke Galeri → Pictures → MEDIA WAHID TV.
+- Template dipilih sebelum foto/rekam dan dikunci selama rekaman.
+- Kamera depan/belakang dapat diganti saat recording menggunakan persistent recording.
+- Pinch-to-zoom dan tap-to-focus.
+- Rekaman tidak boleh keluar lewat tombol Back sebelum dihentikan.
+- Jika storage hampir habis, aplikasi menghentikan rekaman secara aman.
+- File hasil rekaman yang finalize dengan error dibersihkan agar tidak meninggalkan file rusak.
 
 ## Template
+### MASJID + MEDIA WAHID TV
+- Logo Masjid kiri atas.
+- Logo MEDIA WAHID TV kanan atas.
 
-### Template A — Masjid + MEDIA WAHID TV
-- Logo Masjid: kiri atas
-- Logo MEDIA WAHID TV: kanan atas
-- Kedua logo wajib lolos verifikasi sebelum hasil dinyatakan sukses
+### MEDIA WAHID TV
+- Logo MEDIA WAHID TV kanan atas.
 
-### Template B — MEDIA WAHID TV
-- Logo MEDIA WAHID TV: kanan atas
-- Logo wajib lolos verifikasi sebelum hasil dinyatakan sukses
+## Long recording
+Aplikasi tidak menetapkan batas 30 detik, 50 menit, 90 menit, atau batas durasi lain. Durasi nyata dibatasi oleh storage, kondisi termal perangkat, baterai, dan kemampuan encoder perangkat.
 
-Pilihan template tersimpan otomatis dan template yang aktif dikunci saat tombol foto/video ditekan.
+Untuk target operasional 90 menit, aplikasi mensyaratkan minimal 8 GB ruang kosong sebelum mulai dan akan menghentikan recording secara aman jika ruang kosong turun di bawah 1 GB. Baterai dan kondisi termal perangkat tetap perlu dijaga.
 
-## Kamera
-Aplikasi membuka Samsung Camera asli agar fungsi kamera vendor tetap tersedia. Setelah video selesai, pilih rekaman yang baru dibuat untuk dirender dengan template yang dipilih.
-
-## Fail-closed watermark
-Foto/video baru disimpan ke folder MEDIA WAHID TV setelah watermark template terverifikasi pada hasil render.
-
-## Lokasi hasil
-- Video: Galeri → Movies → MEDIA WAHID TV
-- Foto: Galeri → Pictures → MEDIA WAHID TV
-
-Nama file membedakan template:
-- `MEDIA_WAHID_TV_DUAL_...`
-- `MEDIA_WAHID_TV_MEDIA_...`
-
-## Build gate
-GitHub Actions memeriksa:
-- kedua asset logo dapat di-decode,
-- compile + Android lint,
-- kedua logo tetap valid setelah masuk APK,
-- engine memuat kedua mode template.
-
-Artifact: **MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE**
-
-
-## v4.0.5 final logo + hardening
-- Template yang dipilih dikunci **sinkron** sebelum Samsung Camera dibuka.
-- Jika lock template gagal/hilang, capture dihentikan (fail-closed) supaya tidak diam-diam jatuh ke template lain.
-- Mode **Masjid + MEDIA WAHID TV** pada video dibuat sebagai **satu bitmap overlay komposit**: Masjid kiri + MEDIA WAHID TV kanan.
-- Path foto pending juga disimpan sinkron agar tahan process recreation.
-
-- Logo Masjid kiri diganti ke artwork resmi terbaru yang diberikan user; dimensi resource tetap 303x174 agar ukuran/layout watermark tidak berubah.
+## Build target
+- Android minSdk 29
+- CameraX 1.6.2 stable
+- FHD preferred
+- Direct MediaStore output
+- Live OverlayEffect watermark

@@ -1,134 +1,118 @@
 package tv.mediawahid.camera
 
-import android.app.Activity
-import android.content.ActivityNotFoundException
-import android.content.ClipData
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ContentValues
-import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.os.StatFs
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.FileProvider
+import androidx.annotation.OptIn
+import androidx.camera.core.Camera
+import androidx.camera.core.CameraEffect.IMAGE_CAPTURE
+import androidx.camera.core.CameraEffect.PREVIEW
+import androidx.camera.core.CameraEffect.VIDEO_CAPTURE
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.effects.OverlayEffect
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.ExperimentalPersistentRecording
+import androidx.camera.video.FallbackStrategy
+import androidx.camera.video.MediaStoreOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.media3.common.util.UnstableApi
-import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+import kotlin.math.max
+import kotlin.math.min
 
-@UnstableApi
 class MainActivity : ComponentActivity() {
 
     companion object {
         private const val PREFS_NAME = "media_wahid_camera"
         private const val KEY_TEMPLATE = "selected_template"
-        private const val KEY_PENDING_TEMPLATE = "pending_capture_template"
-        private const val KEY_PENDING_PHOTO_PATH = "pending_photo_path"
+        private const val TARGET_VIDEO_BITRATE = 8_000_000
+        private const val MIN_START_FREE_BYTES = 8L * 1024L * 1024L * 1024L
+        private const val STOP_FREE_BYTES = 1L * 1024L * 1024L * 1024L
     }
 
     private lateinit var root: FrameLayout
-    private lateinit var videoButton: TextView
+    private lateinit var previewView: PreviewView
+    private lateinit var recordButton: TextView
     private lateinit var photoButton: TextView
-    private lateinit var processingPanel: View
-    private lateinit var processingTitle: TextView
-    private lateinit var processingDetail: TextView
-    private lateinit var processingProgress: ProgressBar
+    private lateinit var switchButton: TextView
     private lateinit var statusText: TextView
-    private lateinit var selectedTemplateText: TextView
-    private lateinit var dualCard: LinearLayout
-    private lateinit var mediaOnlyCard: LinearLayout
-    private lateinit var dualState: TextView
-    private lateinit var mediaOnlyState: TextView
+    private lateinit var timerText: TextView
+    private lateinit var dualButton: TextView
+    private lateinit var mediaOnlyButton: TextView
 
-    private var currentPhotoFile: File? = null
-    private var cameraLaunchInProgress = false
-    private var activeExporter: WatermarkExporter? = null
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var boundCamera: Camera? = null
+    private var preview: Preview? = null
+    private var imageCapture: ImageCapture? = null
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private var overlayEffect: OverlayEffect? = null
+    private var watermarkRenderer: LiveWatermarkRenderer? = null
+    private var recording: Recording? = null
+
+    private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var selectedTemplate = WatermarkTemplate.DUAL
-    private var pendingTemplate = WatermarkTemplate.DUAL
+    private var recordingTemplate = WatermarkTemplate.DUAL
+    private var cameraReady = false
+    private var lowStorageStopRequested = false
+    private var overlayFailed = false
+    private var photoCaptureInProgress = false
 
     private val preferences by lazy {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
     }
 
-    private val videoLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        cameraLaunchInProgress = false
-        val lockedTemplate = loadPendingTemplateOrAbort("video")
-            ?: return@registerForActivityResult
-        pendingTemplate = lockedTemplate
-
-        statusText.text = "Pilih rekaman yang baru dibuat • " + lockedTemplate.displayName
-        videoPickerLauncher.launch(
-            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-        )
-    }
-
-    private val videoPickerLauncher = registerForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri == null) {
-            showReadyState("Video belum dipilih")
-            return@registerForActivityResult
-        }
-
-        val lockedTemplate = loadPendingTemplateOrAbort("video")
-            ?: return@registerForActivityResult
-        pendingTemplate = lockedTemplate
-        processAndSaveVideo(uri, lockedTemplate)
-    }
-
-    private val photoLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        cameraLaunchInProgress = false
-        val lockedTemplate = loadPendingTemplateOrAbort("foto")
-            ?: return@registerForActivityResult
-        pendingTemplate = lockedTemplate
-
-        val captureFile = currentPhotoFile ?: preferences
-            .getString(KEY_PENDING_PHOTO_PATH, null)
-            ?.let(::File)
-        val returnedUri = result.data?.data
-
-        val usableFile = when {
-            captureFile != null && captureFile.exists() && captureFile.length() > 0L -> captureFile
-            returnedUri != null -> copyReturnedFileToCache(returnedUri, "returned_photo", "jpg")
-            else -> null
-        }
-
-        if (usableFile != null && usableFile.exists() && usableFile.length() > 0L) {
-            processAndSavePhoto(usableFile, lockedTemplate)
+        if (hasCameraPermission()) {
+            previewView.post { startCamera() }
         } else {
-            captureFile?.delete()
-            clearPendingPhotoPath()
-
-            showReadyState(
-                if (result.resultCode == Activity.RESULT_CANCELED) {
-                    "Foto dibatalkan"
-                } else {
-                    "Foto belum diterima. Coba lagi."
-                }
-            )
+            setStatus("Izin kamera wajib untuk menggunakan aplikasi")
+            Toast.makeText(
+                this,
+                "Izin kamera belum diberikan.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -138,31 +122,29 @@ class MainActivity : ComponentActivity() {
         selectedTemplate = WatermarkTemplate.fromStorage(
             preferences.getString(KEY_TEMPLATE, WatermarkTemplate.DUAL.storageValue)
         )
-        pendingTemplate = WatermarkTemplate.fromStorage(
-            preferences.getString(KEY_PENDING_TEMPLATE, selectedTemplate.storageValue)
-        )
-        currentPhotoFile = preferences
-            .getString(KEY_PENDING_PHOTO_PATH, null)
-            ?.let(::File)
-            ?.takeIf { it.exists() }
+        recordingTemplate = selectedTemplate
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
         buildUi()
-        applyTemplateSelection(showToast = false)
+        applyTemplateUi()
         hideSystemBars()
 
-        videoButton.setOnClickListener { launchSamsungVideo() }
-        photoButton.setOnClickListener { launchSamsungPhoto() }
+        recordButton.setOnClickListener { toggleRecording() }
+        photoButton.setOnClickListener { takePhoto() }
+        switchButton.setOnClickListener { switchCamera() }
+        dualButton.setOnClickListener { selectTemplate(WatermarkTemplate.DUAL) }
+        mediaOnlyButton.setOnClickListener { selectTemplate(WatermarkTemplate.MEDIA_ONLY) }
+
+        configurePreviewGestures()
 
         onBackPressedDispatcher.addCallback(
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    if (processingPanel.visibility == View.VISIBLE) {
+                    if (recording != null) {
                         Toast.makeText(
                             this@MainActivity,
-                            "Sedang memproses. Tunggu sampai selesai.",
+                            "Stop rekaman dulu sebelum keluar.",
                             Toast.LENGTH_SHORT
                         ).show()
                     } else {
@@ -172,869 +154,870 @@ class MainActivity : ComponentActivity() {
                 }
             }
         )
+
+        if (hasCameraPermission()) {
+            previewView.post { startCamera() }
+        } else {
+            permissionLauncher.launch(
+                arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+            )
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        if (::root.isInitialized) hideSystemBars()
+        hideSystemBars()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+        if (recording == null) {
+            val rotation = previewView.display?.rotation ?: return
+            preview?.targetRotation = rotation
+            imageCapture?.targetRotation = rotation
+            videoCapture?.targetRotation = rotation
+        }
     }
 
     override fun onDestroy() {
-        activeExporter?.cancel()
-        activeExporter = null
+        recording?.close()
+        recording = null
+
+        cameraProvider?.unbindAll()
+        overlayEffect?.clearOnDrawListener()
+        overlayEffect?.close()
+        overlayEffect = null
+        watermarkRenderer?.close()
+        watermarkRenderer = null
+
         super.onDestroy()
     }
 
     private fun buildUi() {
         root = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(6, 8, 11))
+            setBackgroundColor(Color.BLACK)
             keepScreenOn = true
         }
         setContentView(root)
 
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            overScrollMode = View.OVER_SCROLL_NEVER
+        previewView = PreviewView(this).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            setBackgroundColor(Color.BLACK)
         }
-        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        root.addView(previewView, FrameLayout.LayoutParams(-1, -1))
 
-        val content = LinearLayout(this).apply {
+        val topPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(20), dp(28), dp(20), dp(28))
+            setPadding(dp(14), dp(12), dp(14), dp(10))
+            background = roundedBackground(
+                Color.argb(185, 5, 7, 10),
+                Color.argb(180, 70, 80, 92),
+                18
+            )
         }
-        scroll.addView(content, FrameLayout.LayoutParams(-1, -2))
 
-        val mediaLogo = ImageView(this).apply {
+        val brandRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        brandRow.addView(ImageView(this).apply {
             setImageResource(R.drawable.media_wahid_logo_original)
             scaleType = ImageView.ScaleType.FIT_CENTER
-        }
-        content.addView(mediaLogo, LinearLayout.LayoutParams(-1, dp(82)))
+        }, LinearLayout.LayoutParams(dp(80), dp(44)))
 
-        content.addView(TextView(this).apply {
+        brandRow.addView(TextView(this).apply {
             text = "MEDIA WAHID TV CAMERA"
             setTextColor(Color.WHITE)
-            textSize = 23f
-            gravity = Gravity.CENTER
+            textSize = 15f
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(24), 0, dp(5))
-        }, LinearLayout.LayoutParams(-1, -2))
+            setPadding(dp(10), 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
 
-        content.addView(TextView(this).apply {
-            text = "Dual Template Studio • Watermark Verified"
-            setTextColor(Color.rgb(157, 168, 183))
-            textSize = 13f
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, -2))
-
-        selectedTemplateText = TextView(this).apply {
-            setTextColor(Color.rgb(235, 240, 247))
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(16), dp(9), dp(16), dp(9))
-        }
-        content.addView(selectedTemplateText, LinearLayout.LayoutParams(-2, -2).apply {
-            topMargin = dp(18)
-            bottomMargin = dp(18)
-        })
-
-        content.addView(TextView(this).apply {
-            text = "PILIH TEMPLATE WATERMARK"
-            setTextColor(Color.rgb(205, 213, 224))
-            textSize = 12f
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.START
-        }, LinearLayout.LayoutParams(-1, -2).apply {
-            bottomMargin = dp(10)
-        })
-
-        dualCard = createDualTemplateCard()
-        content.addView(dualCard, LinearLayout.LayoutParams(-1, -2).apply {
-            bottomMargin = dp(10)
-        })
-
-        mediaOnlyCard = createMediaOnlyTemplateCard()
-        content.addView(mediaOnlyCard, LinearLayout.LayoutParams(-1, -2).apply {
-            bottomMargin = dp(20)
-        })
-
-        videoButton = TextView(this).apply {
-            text = "REKAM VIDEO"
+        timerText = TextView(this).apply {
+            text = "00:00:00"
             setTextColor(Color.WHITE)
-            textSize = 17f
-            gravity = Gravity.CENTER
+            textSize = 14f
             setTypeface(typeface, Typeface.BOLD)
-            background = roundedBackground(
-                fill = Color.rgb(225, 36, 48),
-                stroke = Color.rgb(225, 36, 48),
-                radiusDp = 28
-            )
+            gravity = Gravity.END
         }
-        content.addView(videoButton, LinearLayout.LayoutParams(-1, dp(60)))
+        brandRow.addView(timerText, LinearLayout.LayoutParams(dp(90), -2))
 
-        photoButton = TextView(this).apply {
-            text = "AMBIL FOTO"
-            setTextColor(Color.WHITE)
-            textSize = 17f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            background = roundedBackground(
-                fill = Color.rgb(28, 34, 42),
-                stroke = Color.rgb(76, 87, 102),
-                radiusDp = 28
-            )
-        }
-        content.addView(photoButton, LinearLayout.LayoutParams(-1, dp(60)).apply {
-            topMargin = dp(11)
-        })
+        topPanel.addView(brandRow, LinearLayout.LayoutParams(-1, -2))
 
         statusText = TextView(this).apply {
-            text = "Hasil hanya disimpan setelah watermark template lolos verifikasi"
-            setTextColor(Color.rgb(142, 152, 166))
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(16), dp(8), dp(8))
-        }
-        content.addView(statusText, LinearLayout.LayoutParams(-1, -2))
-
-        content.addView(TextView(this).apply {
-            text = "Original Samsung Camera • Foto & Video • pilihan template tersimpan"
-            setTextColor(Color.rgb(103, 113, 127))
+            text = "Menyiapkan kamera..."
+            setTextColor(Color.rgb(205, 213, 224))
             textSize = 11f
             gravity = Gravity.CENTER
+            setPadding(0, dp(7), 0, dp(7))
+        }
+        topPanel.addView(statusText, LinearLayout.LayoutParams(-1, -2))
+
+        val templateRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        dualButton = templateButton("MASJID + MEDIA")
+        mediaOnlyButton = templateButton("MEDIA ONLY")
+
+        templateRow.addView(dualButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+            marginEnd = dp(5)
+        })
+        templateRow.addView(mediaOnlyButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+            marginStart = dp(5)
+        })
+        topPanel.addView(templateRow, LinearLayout.LayoutParams(-1, -2))
+
+        root.addView(topPanel, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            leftMargin = dp(12)
+            rightMargin = dp(12)
+            topMargin = dp(14)
+        })
+
+        val bottomPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(12), dp(14), dp(14))
+            background = roundedBackground(
+                Color.argb(205, 5, 7, 10),
+                Color.argb(180, 70, 80, 92),
+                22
+            )
+        }
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        photoButton = controlButton("FOTO", Color.rgb(40, 47, 57))
+        recordButton = controlButton("REKAM", Color.rgb(220, 35, 45))
+        switchButton = controlButton("BALIK", Color.rgb(40, 47, 57))
+
+        controls.addView(photoButton, LinearLayout.LayoutParams(0, dp(58), 1f).apply {
+            marginEnd = dp(5)
+        })
+        controls.addView(recordButton, LinearLayout.LayoutParams(0, dp(64), 1.15f).apply {
+            marginStart = dp(5)
+            marginEnd = dp(5)
+        })
+        controls.addView(switchButton, LinearLayout.LayoutParams(0, dp(58), 1f).apply {
+            marginStart = dp(5)
+        })
+
+        bottomPanel.addView(controls, LinearLayout.LayoutParams(-1, -2))
+
+        bottomPanel.addView(TextView(this).apply {
+            text = "FHD • watermark langsung tertanam • tanpa render setelah rekam"
+            setTextColor(Color.rgb(166, 176, 189))
+            textSize = 10f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(9), 0, 0)
         }, LinearLayout.LayoutParams(-1, -2))
 
-        val processing = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        root.addView(bottomPanel, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+            leftMargin = dp(12)
+            rightMargin = dp(12)
+            bottomMargin = dp(18)
+        })
+    }
+
+    private fun templateButton(label: String): TextView =
+        TextView(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            textSize = 11f
             gravity = Gravity.CENTER
-            setPadding(dp(30), dp(30), dp(30), dp(30))
-            setBackgroundColor(Color.argb(252, 6, 8, 11))
-            visibility = View.GONE
-
-            addView(ImageView(this@MainActivity).apply {
-                setImageResource(R.drawable.media_wahid_logo_original)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-            }, LinearLayout.LayoutParams(dp(185), dp(105)))
-
-            processingTitle = TextView(this@MainActivity).apply {
-                text = "MEMPROSES..."
-                setTextColor(Color.WHITE)
-                textSize = 20f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(23), 0, 0)
-            }
-            addView(processingTitle)
-
-            processingDetail = TextView(this@MainActivity).apply {
-                text = "Menanam watermark..."
-                setTextColor(Color.rgb(181, 189, 201))
-                textSize = 13f
-                gravity = Gravity.CENTER
-                setPadding(dp(18), dp(9), dp(18), 0)
-            }
-            addView(processingDetail)
-
-            processingProgress = ProgressBar(
-                this@MainActivity,
-                null,
-                android.R.attr.progressBarStyleHorizontal
-            ).apply {
-                max = 100
-                progress = 0
-                isIndeterminate = true
-            }
-            addView(processingProgress, LinearLayout.LayoutParams(-1, dp(10)).apply {
-                topMargin = dp(24)
-            })
-        }
-
-        processingPanel = processing
-        root.addView(processing, FrameLayout.LayoutParams(-1, -1))
-    }
-
-    private fun createDualTemplateCard(): LinearLayout {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setTypeface(typeface, Typeface.BOLD)
             isClickable = true
             isFocusable = true
-            setOnClickListener { selectTemplate(WatermarkTemplate.DUAL) }
         }
 
-        val preview = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        preview.addView(ImageView(this).apply {
-            setImageResource(R.drawable.masjid_raya_logo)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-        }, LinearLayout.LayoutParams(0, dp(54), 1f).apply {
-            marginEnd = dp(8)
-        })
-
-        preview.addView(ImageView(this).apply {
-            setImageResource(R.drawable.media_wahid_logo_original)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-        }, LinearLayout.LayoutParams(0, dp(54), 1f).apply {
-            marginStart = dp(8)
-        })
-
-        card.addView(preview, LinearLayout.LayoutParams(-1, dp(54)))
-
-        val titleRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(11), 0, 0)
-        }
-
-        titleRow.addView(TextView(this).apply {
-            text = "MASJID + MEDIA WAHID TV"
+    private fun controlButton(label: String, fill: Int): TextView =
+        TextView(this).apply {
+            text = label
             setTextColor(Color.WHITE)
-            textSize = 15f
+            textSize = 13f
+            gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-
-        dualState = TextView(this).apply {
-            textSize = 11f
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        titleRow.addView(dualState)
-
-        card.addView(titleRow)
-
-        card.addView(TextView(this).apply {
-            text = "Masjid kiri atas • MEDIA WAHID TV kanan atas"
-            setTextColor(Color.rgb(146, 157, 171))
-            textSize = 12f
-            setPadding(0, dp(5), 0, 0)
-        })
-
-        return card
-    }
-
-    private fun createMediaOnlyTemplateCard(): LinearLayout {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = roundedBackground(fill, fill, 24)
             isClickable = true
             isFocusable = true
-            setOnClickListener { selectTemplate(WatermarkTemplate.MEDIA_ONLY) }
         }
-
-        card.addView(ImageView(this).apply {
-            setImageResource(R.drawable.media_wahid_logo_original)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-        }, LinearLayout.LayoutParams(-1, dp(54)))
-
-        val titleRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(11), 0, 0)
-        }
-
-        titleRow.addView(TextView(this).apply {
-            text = "MEDIA WAHID TV"
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-
-        mediaOnlyState = TextView(this).apply {
-            textSize = 11f
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        titleRow.addView(mediaOnlyState)
-
-        card.addView(titleRow)
-
-        card.addView(TextView(this).apply {
-            text = "Watermark bersih • MEDIA WAHID TV kanan atas"
-            setTextColor(Color.rgb(146, 157, 171))
-            textSize = 12f
-            setPadding(0, dp(5), 0, 0)
-        })
-
-        return card
-    }
 
     private fun selectTemplate(template: WatermarkTemplate) {
-        if (processingPanel.visibility == View.VISIBLE || cameraLaunchInProgress) return
+        if (recording != null || photoCaptureInProgress) {
+            Toast.makeText(
+                this,
+                if (recording != null) "Template dikunci selama rekaman." else "Tunggu foto selesai.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
 
-        val persisted = preferences.edit()
+        val saved = preferences.edit()
             .putString(KEY_TEMPLATE, template.storageValue)
             .commit()
 
-        if (!persisted) {
-            Toast.makeText(
-                this,
-                "Template gagal disimpan. Coba pilih lagi.",
-                Toast.LENGTH_LONG
-            ).show()
+        if (!saved) {
+            Toast.makeText(this, "Template gagal disimpan.", Toast.LENGTH_LONG).show()
             return
         }
 
         selectedTemplate = template
-        applyTemplateSelection(showToast = true)
+        recordingTemplate = template
+        watermarkRenderer?.template = template
+        applyTemplateUi()
+        setStatus("Template aktif: " + template.displayName)
     }
 
-    private fun applyTemplateSelection(showToast: Boolean) {
-        val selectedFill = Color.rgb(22, 29, 36)
-        val selectedStroke = Color.rgb(78, 196, 151)
-        val idleFill = Color.rgb(14, 18, 23)
-        val idleStroke = Color.rgb(48, 58, 71)
+    private fun applyTemplateUi() {
+        val activeFill = Color.rgb(22, 58, 50)
+        val activeStroke = Color.rgb(72, 210, 159)
+        val idleFill = Color.rgb(28, 34, 42)
+        val idleStroke = Color.rgb(70, 80, 94)
 
-        val dualSelected = selectedTemplate == WatermarkTemplate.DUAL
-
-        dualCard.background = roundedBackground(
-            fill = if (dualSelected) selectedFill else idleFill,
-            stroke = if (dualSelected) selectedStroke else idleStroke,
-            radiusDp = 18
+        val dual = selectedTemplate == WatermarkTemplate.DUAL
+        dualButton.background = roundedBackground(
+            if (dual) activeFill else idleFill,
+            if (dual) activeStroke else idleStroke,
+            18
         )
-
-        mediaOnlyCard.background = roundedBackground(
-            fill = if (!dualSelected) selectedFill else idleFill,
-            stroke = if (!dualSelected) selectedStroke else idleStroke,
-            radiusDp = 18
+        mediaOnlyButton.background = roundedBackground(
+            if (!dual) activeFill else idleFill,
+            if (!dual) activeStroke else idleStroke,
+            18
         )
-
-        dualState.text = if (dualSelected) "✓ AKTIF" else "PILIH"
-        mediaOnlyState.text = if (!dualSelected) "✓ AKTIF" else "PILIH"
-
-        dualState.setTextColor(
-            if (dualSelected) selectedStroke else Color.rgb(132, 143, 158)
-        )
-        mediaOnlyState.setTextColor(
-            if (!dualSelected) selectedStroke else Color.rgb(132, 143, 158)
-        )
-
-        selectedTemplateText.text = "TEMPLATE AKTIF • " + selectedTemplate.displayName
-        selectedTemplateText.background = roundedBackground(
-            fill = Color.rgb(17, 23, 29),
-            stroke = selectedStroke,
-            radiusDp = 22
-        )
-
-        statusText.text =
-            "Siap • " + selectedTemplate.displayName + " • watermark wajib terverifikasi"
-
-        if (showToast) {
-            Toast.makeText(
-                this,
-                "Template: " + selectedTemplate.displayName,
-                Toast.LENGTH_SHORT
-            ).show()
-        }
+        dualButton.text = if (dual) "✓ MASJID + MEDIA" else "MASJID + MEDIA"
+        mediaOnlyButton.text = if (!dual) "✓ MEDIA ONLY" else "MEDIA ONLY"
     }
 
-    private fun launchSamsungVideo() {
-        if (cameraLaunchInProgress || processingPanel.visibility == View.VISIBLE) return
+    private fun startCamera() {
+        cameraReady = false
+        setControlsEnabled(false)
+        setStatus("Menyiapkan kamera FHD...")
 
-        val lockedTemplate = lockTemplateForCapture() ?: return
-
-        cameraLaunchInProgress = true
-        statusText.text =
-            "Rekam dengan Samsung Camera • TEMPLATE TERKUNCI: " + lockedTemplate.displayName
-
-        val baseIntent = Intent(MediaStore.INTENT_ACTION_VIDEO_CAMERA)
-
-        try {
-            videoLauncher.launch(Intent(baseIntent).apply {
-                setPackage("com.sec.android.app.camera")
-            })
-        } catch (_: ActivityNotFoundException) {
-            launchGenericVideo(baseIntent)
-        } catch (_: SecurityException) {
-            launchGenericVideo(baseIntent)
-        }
-    }
-
-    private fun launchGenericVideo(baseIntent: Intent) {
-        try {
-            videoLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
-        } catch (_: Throwable) {
-            cameraLaunchInProgress = false
-            showReadyState("Aplikasi kamera video tidak ditemukan")
-
-            Toast.makeText(
-                this,
-                "Kamera video bawaan tidak bisa dibuka.",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
-    private fun launchSamsungPhoto() {
-        if (cameraLaunchInProgress || processingPanel.visibility == View.VISIBLE) return
-
-        val lockedTemplate = lockTemplateForCapture() ?: return
-
-        val capturesDir = File(externalCacheDir ?: cacheDir, "captures").apply { mkdirs() }
-        val captureFile = File(
-            capturesDir,
-            "media_wahid_photo_" + System.currentTimeMillis() + ".jpg"
-        )
-
-        currentPhotoFile?.delete()
-        currentPhotoFile = captureFile
-        val photoPathSaved = preferences.edit()
-            .putString(KEY_PENDING_PHOTO_PATH, captureFile.absolutePath)
-            .commit()
-
-        if (!photoPathSaved) {
-            captureFile.delete()
-            currentPhotoFile = null
-            showReadyState("Gagal mengunci sesi foto")
-            Toast.makeText(
-                this,
-                "Sesi foto gagal disimpan. Coba lagi.",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        val outputUri = FileProvider.getUriForFile(
-            this,
-            packageName + ".fileprovider",
-            captureFile
-        )
-
-        val baseIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
-            putExtra(MediaStore.EXTRA_OUTPUT, outputUri)
-            clipData = ClipData.newRawUri("MEDIA WAHID TV photo", outputUri)
-            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-        cameraLaunchInProgress = true
-        statusText.text =
-            "Foto dengan Samsung Camera • TEMPLATE TERKUNCI: " + lockedTemplate.displayName
-
-        try {
-            photoLauncher.launch(Intent(baseIntent).apply {
-                setPackage("com.sec.android.app.camera")
-            })
-        } catch (_: ActivityNotFoundException) {
-            launchGenericPhoto(baseIntent, captureFile)
-        } catch (_: SecurityException) {
-            launchGenericPhoto(baseIntent, captureFile)
-        }
-    }
-
-    private fun launchGenericPhoto(baseIntent: Intent, captureFile: File) {
-        try {
-            photoLauncher.launch(Intent(baseIntent).apply { setPackage(null) })
-        } catch (_: Throwable) {
-            cameraLaunchInProgress = false
-            captureFile.delete()
-            clearPendingPhotoPath()
-            showReadyState("Aplikasi kamera foto tidak ditemukan")
-
-            Toast.makeText(
-                this,
-                "Kamera foto bawaan tidak bisa dibuka.",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
-    private fun lockTemplateForCapture(): WatermarkTemplate? {
-        val locked = selectedTemplate
-
-        val persisted = preferences.edit()
-            .putString(KEY_TEMPLATE, locked.storageValue)
-            .putString(KEY_PENDING_TEMPLATE, locked.storageValue)
-            .commit()
-
-        if (!persisted) {
-            showReadyState("Template belum berhasil dikunci")
-            Toast.makeText(
-                this,
-                "Template gagal dikunci. Kamera tidak dibuka supaya hasil tidak salah.",
-                Toast.LENGTH_LONG
-            ).show()
-            return null
-        }
-
-        pendingTemplate = locked
-        return locked
-    }
-
-    private fun loadPendingTemplateOrAbort(captureType: String): WatermarkTemplate? {
-        val rawValue = preferences.getString(KEY_PENDING_TEMPLATE, null)
-        val locked = WatermarkTemplate.fromStorageOrNull(rawValue)
-
-        if (locked != null) return locked
-
-        cameraLaunchInProgress = false
-        showReadyState("Template $captureType hilang. Ulangi pengambilan dari aplikasi.")
-        Toast.makeText(
-            this,
-            "Sesi $captureType dibatalkan karena template tidak terdeteksi.",
-            Toast.LENGTH_LONG
-        ).show()
-        return null
-    }
-
-    private fun clearPendingPhotoPath() {
-        currentPhotoFile = null
-        preferences.edit()
-            .remove(KEY_PENDING_PHOTO_PATH)
-            .commit()
-    }
-
-    private fun processAndSaveVideo(
-        inputUri: Uri,
-        template: WatermarkTemplate
-    ) {
-        if (!hasEnoughWorkingSpace(inputUri)) {
-            showReadyState("Ruang kosong belum cukup untuk proses video panjang")
-
-            Toast.makeText(
-                this,
-                "Kosongkan penyimpanan dulu. App butuh ruang sementara untuk merender video.",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        setProcessing(
-            visible = true,
-            title = "MEMPROSES VIDEO",
-            detail = "Menanam " + template.processingLabel + " • 0%",
-            indeterminate = false
-        )
-
-        val exportDir = File(externalCacheDir ?: cacheDir, "exports").apply { mkdirs() }
-        val watermarked = File(
-            exportDir,
-            "media_wahid_" + System.currentTimeMillis() + ".mp4"
-        )
-
-        val exporter = WatermarkExporter(this)
-        activeExporter = exporter
-
-        exporter.export(
-            inputUri = inputUri,
-            output = watermarked,
-            template = template,
-            onProgress = { progress ->
-                runOnUiThread {
-                    processingProgress.isIndeterminate = false
-                    processingProgress.progress = progress
-                    processingDetail.text =
-                        if (progress < 100) {
-                            "Menanam " + template.processingLabel + " • " + progress + "%"
-                        } else {
-                            "Memverifikasi " + template.processingLabel + "..."
-                        }
-                }
-            },
-            onCompleted = {
-                runOnUiThread {
-                    activeExporter = null
-
-                    try {
-                        saveVideoToGallery(watermarked, template)
-                        watermarked.delete()
-                        setProcessing(false)
-
-                        showReadyState(
-                            "VIDEO TERSIMPAN ✓ • " + template.displayName + " TERVERIFIKASI"
-                        )
-
-                        Toast.makeText(
-                            this,
-                            "VIDEO TERSIMPAN ✓ • WATERMARK TERVERIFIKASI",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } catch (error: Throwable) {
-                        setProcessing(false)
-                        showReadyState("Video berlogo selesai, tapi gagal disimpan ke Galeri")
-
-                        Toast.makeText(
-                            this,
-                            error.message ?: "Gagal menyimpan video.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-            },
-            onError = { error ->
-                runOnUiThread {
-                    activeExporter = null
-                    watermarked.delete()
-                    setProcessing(false)
-
-                    showReadyState(
-                        "Video tidak disimpan karena watermark belum terverifikasi"
-                    )
-
-                    Toast.makeText(
-                        this,
-                        error.message ?: "Pemrosesan video gagal.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        )
-    }
-
-    private fun processAndSavePhoto(
-        rawFile: File,
-        template: WatermarkTemplate
-    ) {
-        setProcessing(
-            visible = true,
-            title = "MEMPROSES FOTO",
-            detail = "Menanam dan memverifikasi " + template.processingLabel,
-            indeterminate = true
-        )
-
-        Thread {
-            val exportDir = File(externalCacheDir ?: cacheDir, "exports").apply { mkdirs() }
-            val watermarked = File(
-                exportDir,
-                "media_wahid_photo_" + System.currentTimeMillis() + ".jpg"
-            )
-
+        val future = ProcessCameraProvider.getInstance(this)
+        future.addListener({
             try {
-                PhotoWatermarker(this).process(rawFile, watermarked, template)
-                rawFile.delete()
-                clearPendingPhotoPath()
-
-                runOnUiThread {
-                    try {
-                        savePhotoToGallery(watermarked, template)
-                        watermarked.delete()
-                        setProcessing(false)
-
-                        showReadyState(
-                            "FOTO TERSIMPAN ✓ • " + template.displayName + " TERVERIFIKASI"
-                        )
-
-                        Toast.makeText(
-                            this,
-                            "FOTO TERSIMPAN ✓ • WATERMARK TERVERIFIKASI",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } catch (error: Throwable) {
-                        watermarked.delete()
-                        setProcessing(false)
-                        showReadyState("Foto berlogo selesai, tapi gagal disimpan ke Galeri")
-
-                        Toast.makeText(
-                            this,
-                            error.message ?: "Gagal menyimpan foto.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                cameraProvider = future.get()
+                buildCameraUseCases()
+                bindCamera()
+                waitForPreviewReady(
+                    onReady = {
+                        setControlsEnabled(true)
+                        setStatus("Siap • " + selectedTemplate.displayName)
+                    },
+                    onTimeout = {
+                        setControlsEnabled(false)
+                        setStatus("Preview gagal siap • buka ulang aplikasi")
                     }
-                }
+                )
             } catch (error: Throwable) {
-                rawFile.delete()
-                watermarked.delete()
-                clearPendingPhotoPath()
-
-                runOnUiThread {
-                    setProcessing(false)
-                    showReadyState(
-                        "Foto tidak disimpan karena watermark belum terverifikasi"
-                    )
-
-                    Toast.makeText(
-                        this,
-                        error.message ?: "Pemrosesan foto gagal.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+                cameraReady = false
+                setControlsEnabled(false)
+                setStatus("Kamera gagal dibuka")
+                Toast.makeText(
+                    this,
+                    error.message ?: "Kamera gagal dibuka.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
-        }.start()
+        }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun copyReturnedFileToCache(
-        uri: Uri,
-        prefix: String,
-        extension: String
-    ): File? {
-        return try {
-            val dir = File(externalCacheDir ?: cacheDir, "imports").apply { mkdirs() }
-            val file = File(
-                dir,
-                prefix + "_" + System.currentTimeMillis() + "." + extension
+    @Suppress("DEPRECATION")
+    private fun buildCameraUseCases() {
+        val rotation = previewView.display?.rotation ?: windowManager.defaultDisplay.rotation
+
+        preview = Preview.Builder()
+            .setTargetRotation(rotation)
+            .build()
+            .also {
+                it.surfaceProvider = previewView.surfaceProvider
+            }
+
+        imageCapture = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setTargetRotation(rotation)
+            .build()
+
+        val recorder = Recorder.Builder()
+            .setQualitySelector(
+                QualitySelector.from(
+                    Quality.FHD,
+                    FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                )
             )
+            .setTargetVideoEncodingBitRate(TARGET_VIDEO_BITRATE)
+            .build()
 
-            contentResolver.openInputStream(uri)?.use { input ->
-                file.outputStream().buffered(1024 * 1024).use { output ->
-                    input.copyTo(output, 1024 * 1024)
-                }
-            } ?: return null
-
-            file.takeIf { it.length() > 0L }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun hasEnoughWorkingSpace(uri: Uri): Boolean {
-        val inputSize = try {
-            contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
-                descriptor.length
-            } ?: -1L
-        } catch (_: Throwable) {
-            -1L
+        videoCapture = VideoCapture.withOutput(recorder).also {
+            it.targetRotation = rotation
         }
 
-        val stat = StatFs((externalCacheDir ?: cacheDir).absolutePath)
-        val available = stat.availableBytes
-        val reserve = 512L * 1024L * 1024L
+        watermarkRenderer?.close()
+        watermarkRenderer = LiveWatermarkRenderer(this, previewView).apply {
+            template = selectedTemplate
+        }
 
-        val required = if (inputSize > 0L) {
-            val doubled =
-                if (inputSize > Long.MAX_VALUE / 2L) Long.MAX_VALUE else inputSize * 2L
+        overlayEffect?.clearOnDrawListener()
+        overlayEffect?.close()
 
-            if (doubled > Long.MAX_VALUE - reserve) {
-                Long.MAX_VALUE
-            } else {
-                doubled + reserve
+        overlayEffect = OverlayEffect(
+            PREVIEW or VIDEO_CAPTURE or IMAGE_CAPTURE,
+            0,
+            Handler(Looper.getMainLooper())
+        ) { error ->
+            runOnUiThread {
+                overlayFailed = true
+                cameraReady = false
+                runCatching { recording?.stop() }
+                setControlsEnabled(false)
+                setStatus("Watermark engine error • capture dihentikan")
+                Toast.makeText(
+                    this,
+                    error.message ?: "Watermark engine gagal.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
-        } else {
-            2L * 1024L * 1024L * 1024L
-        }
-
-        return available > required
-    }
-
-    private fun setProcessing(
-        visible: Boolean,
-        title: String = "",
-        detail: String = "",
-        indeterminate: Boolean = true
-    ) {
-        processingPanel.visibility = if (visible) View.VISIBLE else View.GONE
-
-        videoButton.isEnabled = !visible
-        photoButton.isEnabled = !visible
-        dualCard.isEnabled = !visible
-        mediaOnlyCard.isEnabled = !visible
-
-        if (visible) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
-            processingTitle.text = title
-            processingDetail.text = detail
-            processingProgress.progress = 0
-            processingProgress.isIndeterminate = indeterminate
-        } else {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }.also { effect ->
+            effect.setOnDrawListener { frame ->
+                watermarkRenderer?.draw(frame) ?: false
+            }
         }
     }
 
-    private fun showReadyState(message: String) {
-        statusText.text = message
-        videoButton.isEnabled = true
-        photoButton.isEnabled = true
-        dualCard.isEnabled = true
-        mediaOnlyCard.isEnabled = true
+    private fun bindCamera() {
+        val provider = cameraProvider ?: return
+        val previewUseCase = preview ?: return
+        val photoUseCase = imageCapture ?: return
+        val videoUseCase = videoCapture ?: return
+        val effect = overlayEffect ?: return
+
+        val selector = CameraSelector.Builder()
+            .requireLensFacing(lensFacing)
+            .build()
+
+        provider.unbindAll()
+
+        val groupBuilder = UseCaseGroup.Builder()
+            .addUseCase(previewUseCase)
+            .addUseCase(photoUseCase)
+            .addUseCase(videoUseCase)
+            .addEffect(effect)
+
+        previewView.viewPort?.let { groupBuilder.setViewPort(it) }
+
+        boundCamera = provider.bindToLifecycle(this, selector, groupBuilder.build())
     }
 
-    private fun saveVideoToGallery(
-        file: File,
-        template: WatermarkTemplate
-    ): Uri {
-        val templateSuffix =
-            if (template == WatermarkTemplate.DUAL) "DUAL" else "MEDIA"
+    @OptIn(ExperimentalPersistentRecording::class)
+    @SuppressLint("MissingPermission")
+    private fun toggleRecording() {
+        if (photoCaptureInProgress) return
+
+        val active = recording
+        if (active != null) {
+            recordButton.isEnabled = false
+            setStatus("Menyelesaikan file video...")
+            active.stop()
+            return
+        }
+
+        if (!cameraReady || overlayFailed || previewView.sensorToViewTransform == null) {
+            Toast.makeText(this, "Kamera belum siap.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val freeBytes = availableStorageBytes()
+        if (freeBytes in 0 until MIN_START_FREE_BYTES) {
+            Toast.makeText(
+                this,
+                "Untuk target 1,5 jam FHD, sisakan minimal 8 GB storage kosong.",
+                Toast.LENGTH_LONG
+            ).show()
+            setStatus("Storage belum aman untuk target 90 menit")
+            return
+        }
+
+        val videoUseCase = videoCapture ?: return
+        recordingTemplate = selectedTemplate
+        watermarkRenderer?.template = recordingTemplate
 
         val values = ContentValues().apply {
             put(
                 MediaStore.Video.Media.DISPLAY_NAME,
-                "MEDIA_WAHID_TV_" + templateSuffix + "_" +
-                    System.currentTimeMillis() + ".mp4"
+                "MEDIA_WAHID_TV_" + templateSuffix(recordingTemplate) + "_" + timestamp() + ".mp4"
             )
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
             put(
                 MediaStore.Video.Media.RELATIVE_PATH,
                 Environment.DIRECTORY_MOVIES + "/MEDIA WAHID TV"
             )
-            put(MediaStore.Video.Media.IS_PENDING, 1)
         }
 
-        val uri = contentResolver.insert(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            values
-        ) ?: error("Tidak dapat membuat file video")
+        val outputOptions = MediaStoreOutputOptions.Builder(
+            contentResolver,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).setContentValues(values).build()
 
         try {
-            contentResolver.openOutputStream(uri)?.buffered(1024 * 1024).use { output ->
-                requireNotNull(output) { "Tidak dapat membuka Galeri untuk video" }
-
-                file.inputStream().buffered(1024 * 1024).use { input ->
-                    input.copyTo(output, 1024 * 1024)
-                }
+            var pending = videoUseCase.output.prepareRecording(this, outputOptions)
+            if (hasAudioPermission()) {
+                pending = pending.withAudioEnabled()
             }
 
-            values.clear()
-            values.put(MediaStore.Video.Media.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
-
-            return uri
+            lowStorageStopRequested = false
+            recording = pending
+                .asPersistentRecording()
+                .start(ContextCompat.getMainExecutor(this)) { event ->
+                    handleVideoEvent(event)
+                }
         } catch (error: Throwable) {
-            contentResolver.delete(uri, null, null)
-            throw error
+            recording = null
+            recordButton.isEnabled = true
+            setStatus("Gagal memulai rekaman")
+            Toast.makeText(
+                this,
+                error.message ?: "Recorder tidak dapat dimulai.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
-    private fun savePhotoToGallery(
-        file: File,
-        template: WatermarkTemplate
-    ): Uri {
-        val templateSuffix =
-            if (template == WatermarkTemplate.DUAL) "DUAL" else "MEDIA"
+    private fun handleVideoEvent(event: VideoRecordEvent) {
+        when (event) {
+            is VideoRecordEvent.Start -> {
+                timerText.text = "00:00:00"
+
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                recordButton.text = "STOP"
+                recordButton.background = roundedBackground(
+                    Color.rgb(145, 22, 30),
+                    Color.rgb(255, 88, 98),
+                    24
+                )
+                photoButton.isEnabled = false
+                dualButton.isEnabled = false
+                mediaOnlyButton.isEnabled = false
+                switchButton.isEnabled = true
+                recordButton.isEnabled = true
+                setStatus(
+                    "REC • " + recordingTemplate.displayName +
+                        if (hasAudioPermission()) " • MIC ON" else " • MIC OFF"
+                )
+            }
+
+            is VideoRecordEvent.Status -> {
+                timerText.text = formatDuration(event.recordingStats.recordedDurationNanos)
+
+                if (
+                    !lowStorageStopRequested &&
+                    availableStorageBytes() in 0 until STOP_FREE_BYTES
+                ) {
+                    lowStorageStopRequested = true
+                    setStatus("Storage tersisa < 1 GB • menghentikan rekaman dengan aman...")
+                    recording?.stop()
+                }
+            }
+
+            is VideoRecordEvent.Finalize -> {
+                val finishedRecording = recording
+                recording = null
+                finishedRecording?.close()
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+
+                recordButton.text = "REKAM"
+                recordButton.background = roundedBackground(
+                    Color.rgb(220, 35, 45),
+                    Color.rgb(220, 35, 45),
+                    24
+                )
+                recordButton.isEnabled = true
+                photoButton.isEnabled = true
+                dualButton.isEnabled = true
+                mediaOnlyButton.isEnabled = true
+                switchButton.isEnabled = true
+
+                if (overlayFailed) {
+                    setControlsEnabled(false)
+                    setStatus("Watermark engine error • buka ulang aplikasi")
+                    return
+                }
+
+                if (event.hasError()) {
+                    val error = event.error
+                    val uri = event.outputResults.outputUri
+
+                    if (isCorruptOutputError(error)) {
+                        if (uri != android.net.Uri.EMPTY) {
+                            runCatching { contentResolver.delete(uri, null, null) }
+                        }
+                        setStatus("Rekaman gagal • file korup dibersihkan")
+                        Toast.makeText(
+                            this,
+                            "Rekaman gagal: " + recordingErrorLabel(error),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        setStatus("VIDEO PARSIAL TERSIMPAN • " + recordingErrorLabel(error))
+                        Toast.makeText(
+                            this,
+                            "Bagian video yang masih valid tetap disimpan.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+
+                    if (needsRecorderRebuild(error)) {
+                        runCatching {
+                            buildCameraUseCases()
+                            bindCamera()
+                        }
+                    }
+                } else {
+                    setStatus("VIDEO TERSIMPAN ✓ • watermark sudah tertanam")
+                    Toast.makeText(
+                        this,
+                        "VIDEO TERSIMPAN ✓",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun takePhoto() {
+        if (!cameraReady || overlayFailed || recording != null || photoCaptureInProgress) return
+
+        if (availableStorageBytes() in 0 until STOP_FREE_BYTES) {
+            Toast.makeText(this, "Storage hampir penuh.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val capture = imageCapture ?: return
+        watermarkRenderer?.template = selectedTemplate
 
         val values = ContentValues().apply {
             put(
                 MediaStore.Images.Media.DISPLAY_NAME,
-                "MEDIA_WAHID_TV_" + templateSuffix + "_" +
-                    System.currentTimeMillis() + ".jpg"
+                "MEDIA_WAHID_TV_" + templateSuffix(selectedTemplate) + "_" + timestamp() + ".jpg"
             )
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             put(
                 MediaStore.Images.Media.RELATIVE_PATH,
                 Environment.DIRECTORY_PICTURES + "/MEDIA WAHID TV"
             )
-            put(MediaStore.Images.Media.IS_PENDING, 1)
         }
 
-        val uri = contentResolver.insert(
+        val options = ImageCapture.OutputFileOptions.Builder(
+            contentResolver,
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             values
-        ) ?: error("Tidak dapat membuat file foto")
+        ).build()
+
+        photoCaptureInProgress = true
+        recordButton.isEnabled = false
+        photoButton.isEnabled = false
+        switchButton.isEnabled = false
+        dualButton.isEnabled = false
+        mediaOnlyButton.isEnabled = false
+        setStatus("Mengambil foto...")
 
         try {
-            contentResolver.openOutputStream(uri)?.buffered(1024 * 1024).use { output ->
-                requireNotNull(output) { "Tidak dapat membuka Galeri untuk foto" }
+            capture.takePicture(
+                options,
+                ContextCompat.getMainExecutor(this),
+                object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        photoCaptureInProgress = false
+                        restoreIdleControls()
+                        setStatus("FOTO TERSIMPAN ✓ • watermark sudah tertanam")
+                        Toast.makeText(
+                            this@MainActivity,
+                            "FOTO TERSIMPAN ✓",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
 
-                file.inputStream().buffered(1024 * 1024).use { input ->
-                    input.copyTo(output, 1024 * 1024)
+                    override fun onError(exception: ImageCaptureException) {
+                        photoCaptureInProgress = false
+                        restoreIdleControls()
+                        setStatus("Foto gagal")
+                        Toast.makeText(
+                            this@MainActivity,
+                            exception.message ?: "Foto gagal.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
-            }
-
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
-
-            return uri
+            )
         } catch (error: Throwable) {
-            contentResolver.delete(uri, null, null)
-            throw error
+            photoCaptureInProgress = false
+            restoreIdleControls()
+            setStatus("Foto gagal")
+            Toast.makeText(
+                this,
+                error.message ?: "Kamera gagal mengambil foto.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
-    private fun roundedBackground(
-        fill: Int,
-        stroke: Int,
-        radiusDp: Int
-    ): GradientDrawable =
+    private fun switchCamera() {
+        val provider = cameraProvider ?: return
+        if (!cameraReady || photoCaptureInProgress) return
+
+        val newFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+            CameraSelector.LENS_FACING_FRONT
+        } else {
+            CameraSelector.LENS_FACING_BACK
+        }
+
+        val selector = CameraSelector.Builder()
+            .requireLensFacing(newFacing)
+            .build()
+
+        val available = runCatching { provider.hasCamera(selector) }.getOrDefault(false)
+        if (!available) {
+            Toast.makeText(this, "Kamera tersebut tidak tersedia.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        switchButton.isEnabled = false
+        lensFacing = newFacing
+        setStatus(
+            if (recording != null) {
+                "REC • mengganti kamera..."
+            } else {
+                "Mengganti kamera..."
+            }
+        )
+
+        runCatching { bindCamera() }
+            .onSuccess {
+                waitForPreviewReady(
+                    onReady = {
+                        switchButton.isEnabled = true
+                        setStatus(
+                            if (recording != null) {
+                                "REC • " + recordingTemplate.displayName
+                            } else {
+                                "Siap • " + selectedTemplate.displayName
+                            }
+                        )
+                    },
+                    onTimeout = {
+                        switchButton.isEnabled = true
+                        if (recording != null) {
+                            setStatus("Preview gagal stabil • rekaman dihentikan aman")
+                            recording?.stop()
+                        } else {
+                            setStatus("Preview gagal stabil")
+                        }
+                    }
+                )
+            }
+            .onFailure { error ->
+                lensFacing = if (newFacing == CameraSelector.LENS_FACING_BACK) {
+                    CameraSelector.LENS_FACING_FRONT
+                } else {
+                    CameraSelector.LENS_FACING_BACK
+                }
+                runCatching { bindCamera() }
+                switchButton.isEnabled = true
+                setStatus("Gagal mengganti kamera")
+                Toast.makeText(
+                    this,
+                    error.message ?: "Gagal mengganti kamera.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun configurePreviewGestures() {
+        val scaleDetector = ScaleGestureDetector(
+            this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    val camera = boundCamera ?: return false
+                    val state = camera.cameraInfo.zoomState.value ?: return false
+                    val target = (
+                        state.zoomRatio * detector.scaleFactor
+                    ).coerceIn(state.minZoomRatio, state.maxZoomRatio)
+                    camera.cameraControl.setZoomRatio(target)
+                    return true
+                }
+            }
+        )
+
+        var downX = 0f
+        var downY = 0f
+
+        previewView.setOnTouchListener { _, event ->
+            scaleDetector.onTouchEvent(event)
+
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    val moved = max(
+                        kotlin.math.abs(event.x - downX),
+                        kotlin.math.abs(event.y - downY)
+                    )
+                    if (!scaleDetector.isInProgress && moved < dp(16)) {
+                        focusAt(event.x, event.y)
+                    }
+                    true
+                }
+
+                else -> true
+            }
+        }
+    }
+
+    private fun focusAt(x: Float, y: Float) {
+        val camera = boundCamera ?: return
+        val point = previewView.meteringPointFactory.createPoint(x, y)
+        val action = FocusMeteringAction.Builder(point)
+            .setAutoCancelDuration(3, TimeUnit.SECONDS)
+            .build()
+
+        camera.cameraControl.startFocusAndMetering(action)
+    }
+
+    private fun restoreIdleControls() {
+        if (recording != null || overlayFailed || !cameraReady) return
+        recordButton.isEnabled = true
+        photoButton.isEnabled = true
+        switchButton.isEnabled = true
+        dualButton.isEnabled = true
+        mediaOnlyButton.isEnabled = true
+    }
+
+    private fun waitForPreviewReady(
+        attempt: Int = 0,
+        onReady: () -> Unit,
+        onTimeout: () -> Unit,
+    ) {
+        if (overlayFailed) {
+            cameraReady = false
+            onTimeout()
+            return
+        }
+
+        if (
+            previewView.width > 0 &&
+            previewView.height > 0 &&
+            previewView.sensorToViewTransform != null
+        ) {
+            cameraReady = true
+            onReady()
+            return
+        }
+
+        if (attempt >= 30) {
+            cameraReady = false
+            onTimeout()
+            return
+        }
+
+        previewView.postDelayed(
+            {
+                waitForPreviewReady(
+                    attempt = attempt + 1,
+                    onReady = onReady,
+                    onTimeout = onTimeout
+                )
+            },
+            100L
+        )
+    }
+
+    private fun setControlsEnabled(enabled: Boolean) {
+        recordButton.isEnabled = enabled
+        photoButton.isEnabled = enabled
+        switchButton.isEnabled = enabled
+        dualButton.isEnabled = enabled
+        mediaOnlyButton.isEnabled = enabled
+    }
+
+    @Suppress("DEPRECATION")
+    private fun availableStorageBytes(): Long =
+        runCatching {
+            android.os.StatFs(
+                Environment.getExternalStorageDirectory().absolutePath
+            ).availableBytes
+        }.getOrDefault(-1L)
+
+    private fun isCorruptOutputError(error: Int): Boolean =
+        error == VideoRecordEvent.Finalize.ERROR_UNKNOWN ||
+            error == VideoRecordEvent.Finalize.ERROR_INVALID_OUTPUT_OPTIONS ||
+            error == VideoRecordEvent.Finalize.ERROR_ENCODING_FAILED ||
+            error == VideoRecordEvent.Finalize.ERROR_RECORDER_ERROR ||
+            error == VideoRecordEvent.Finalize.ERROR_NO_VALID_DATA ||
+            error == VideoRecordEvent.Finalize.ERROR_RECORDING_GARBAGE_COLLECTED
+
+    private fun needsRecorderRebuild(error: Int): Boolean =
+        error == VideoRecordEvent.Finalize.ERROR_UNKNOWN ||
+            error == VideoRecordEvent.Finalize.ERROR_ENCODING_FAILED ||
+            error == VideoRecordEvent.Finalize.ERROR_RECORDER_ERROR
+
+    private fun recordingErrorLabel(error: Int): String =
+        when (error) {
+            VideoRecordEvent.Finalize.ERROR_UNKNOWN -> "error tidak dikenal"
+            VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED -> "batas file sistem tercapai"
+            VideoRecordEvent.Finalize.ERROR_INSUFFICIENT_STORAGE -> "storage habis"
+            VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE -> "kamera berhenti mengirim frame"
+            VideoRecordEvent.Finalize.ERROR_INVALID_OUTPUT_OPTIONS -> "output tidak valid"
+            VideoRecordEvent.Finalize.ERROR_ENCODING_FAILED -> "encoder gagal"
+            VideoRecordEvent.Finalize.ERROR_RECORDER_ERROR -> "recorder error"
+            VideoRecordEvent.Finalize.ERROR_NO_VALID_DATA -> "tidak ada data video valid"
+            VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED -> "batas durasi sistem tercapai"
+            VideoRecordEvent.Finalize.ERROR_RECORDING_GARBAGE_COLLECTED -> "sesi recording terlepas"
+            else -> "kode error $error"
+        }
+
+    private fun hasCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+
+    private fun hasAudioPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+    private fun setStatus(message: String) {
+        statusText.text = message
+    }
+
+    private fun timestamp(): String =
+        SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+
+    private fun templateSuffix(template: WatermarkTemplate): String =
+        if (template == WatermarkTemplate.DUAL) "DUAL" else "MEDIA"
+
+    private fun formatDuration(nanos: Long): String {
+        val totalSeconds = TimeUnit.NANOSECONDS.toSeconds(nanos)
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
+    private fun roundedBackground(fill: Int, stroke: Int, radiusDp: Int): GradientDrawable =
         GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(radiusDp).toFloat()
@@ -1044,7 +1027,6 @@ class MainActivity : ComponentActivity() {
 
     private fun hideSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
         WindowInsetsControllerCompat(window, root).apply {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior =

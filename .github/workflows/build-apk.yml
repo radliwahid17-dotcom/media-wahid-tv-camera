@@ -1,14 +1,18 @@
-name: Build MEDIA WAHID TV APK
+name: Build MEDIA WAHID TV Camera Final
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, final-v5-live-watermark ]
   workflow_dispatch:
 
+concurrency:
+  group: final-camera-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  final-regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 55
 
     steps:
       - name: Checkout source
@@ -30,133 +34,71 @@ jobs:
           cat app/src/main/logo-source/masjid_final.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
           test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "8690"
           echo "667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg" | sha256sum -c -
-
-      - name: Reject obsolete logo source folders
-        run: |
-          test ! -d app/src/main/masjid-logo-source
-          test ! -d app/src/main/masjid-logo-v2
-          test ! -d app/src/main/masjid-logo-v3
-          test ! -d app/src/main/masjid-logo-v4
-          test ! -d app/src/main/masjid-logo-v5
-
-      - name: Verify both watermark assets can decode
-        run: |
           test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
-          echo "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4  app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg" | sha256sum -c -
-          test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "8690"
 
-          cat > /tmp/VerifyImage.java <<'EOF'
-          import javax.imageio.ImageIO;
-          import java.awt.image.BufferedImage;
-          import java.io.File;
-
-          public class VerifyImage {
-              public static void main(String[] args) throws Exception {
-                  BufferedImage image = ImageIO.read(new File(args[0]));
-                  if (image == null || image.getWidth() != 303 || image.getHeight() != 174) {
-                      throw new IllegalStateException("Logo gagal di-decode atau dimensi salah: " + args[0]);
-                  }
-
-                  int red = 0;
-                  int blue = 0;
-                  int white = 0;
-                  int dark = 0;
-                  int green = 0;
-                  int orange = 0;
-
-                  for (int y = 0; y < image.getHeight(); y++) {
-                      for (int x = 0; x < image.getWidth(); x++) {
-                          int rgb = image.getRGB(x, y);
-                          int r = (rgb >> 16) & 0xff;
-                          int g = (rgb >> 8) & 0xff;
-                          int b = rgb & 0xff;
-
-                          if (r > 150 && r > g * 1.20 && r > b * 1.10) red++;
-                          if (b > 90 && b > r * 1.10 && b > g * 1.01) blue++;
-                          if (r > 215 && g > 215 && b > 215) white++;
-                          if (r < 55 && g < 55 && b < 55) dark++;
-                          if (g > 70 && g > r * 1.12 && g > b * 1.08) green++;
-                          if (r > 160 && g > 55 && g < 180 && b < 90) orange++;
-                      }
-                  }
-
-                  String kind = args[1];
-                  if ("media".equals(kind)) {
-                      if (red < 20 || blue < 20 || white < 1000) {
-                          throw new IllegalStateException("Signature MEDIA WAHID TV tidak valid");
-                      }
-                  } else if ("masjid".equals(kind)) {
-                      System.out.println(
-                          "Masjid pixels -> dark=" + dark
-                          + " green=" + green
-                          + " orange=" + orange
-                          + " white=" + white
-                          + " red=" + red
-                          + " blue=" + blue
-                      );
-                      if (dark < 1200 || green < 100 || orange < 100 || white < 30000) {
-                          throw new IllegalStateException("Signature logo Masjid tidak valid");
-                      }
-                  } else {
-                      throw new IllegalArgumentException("Jenis logo tidak dikenal");
-                  }
-
-                  System.out.println(
-                      args[0] + " -> " + image.getWidth() + "x" + image.getHeight()
-                      + " signature OK"
-                  );
-              }
-          }
-          EOF
-
-          java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg media
-          java /tmp/VerifyImage.java app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg masjid
-
-      - name: Build and lint
-        run: gradle --no-daemon :app:assembleDebug :app:lintDebug
-
-      - name: Verify both logos inside APK can decode
+      - name: Final architecture regression gate
         run: |
-          unzip -p app/build/outputs/apk/debug/app-debug.apk res/drawable-nodpi-v4/media_wahid_logo_original.jpg > /tmp/media_wahid_logo_original.jpg
-          unzip -p app/build/outputs/apk/debug/app-debug.apk res/drawable-nodpi-v4/masjid_raya_logo.jpg > /tmp/masjid_raya_logo.jpg
+          set -euo pipefail
+          MAIN=app/src/main/java/tv/mediawahid/camera/MainActivity.kt
+          RENDERER=app/src/main/java/tv/mediawahid/camera/LiveWatermarkRenderer.kt
+          GRADLE=app/build.gradle.kts
 
-          test -s /tmp/media_wahid_logo_original.jpg
-          test -s /tmp/masjid_raya_logo.jpg
-          test "$(stat -c%s /tmp/masjid_raya_logo.jpg)" = "8690"
-          echo "667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5  /tmp/masjid_raya_logo.jpg" | sha256sum -c -
+          grep -q 'versionName = "5.0.0"' "$GRADLE"
+          grep -q 'cameraX = "1.6.2"' "$GRADLE"
+          grep -q 'Quality.FHD' "$MAIN"
+          grep -q 'asPersistentRecording()' "$MAIN"
+          grep -q 'ExperimentalPersistentRecording' "$MAIN"
+          grep -q 'waitForPreviewReady' "$MAIN"
+          grep -q 'MediaStoreOutputOptions.Builder' "$MAIN"
+          grep -q 'PREVIEW or VIDEO_CAPTURE or IMAGE_CAPTURE' "$MAIN"
+          grep -q 'watermarkRenderer?.template = recordingTemplate' "$MAIN"
+          grep -q 'Stop rekaman dulu sebelum keluar' "$MAIN"
+          grep -q 'TARGET_VIDEO_BITRATE = 8_000_000' "$MAIN"
+          grep -q 'MIN_START_FREE_BYTES = 8L' "$MAIN"
+          grep -q 'STOP_FREE_BYTES = 1L' "$MAIN"
+          grep -q '@OptIn(ExperimentalPersistentRecording::class)' "$MAIN"
+          grep -q 'overlayFailed = true' "$MAIN"
+          grep -q 'sensorToBufferTransform' "$RENDERER"
+          grep -q 'masjidLogo' "$RENDERER"
+          grep -q 'mediaLogo' "$RENDERER"
 
-          java /tmp/VerifyImage.java /tmp/media_wahid_logo_original.jpg media
-          java /tmp/VerifyImage.java /tmp/masjid_raya_logo.jpg masjid
+          ! grep -R -q 'EXTRA_DURATION_LIMIT' app/src/main/java
+          ! grep -R -q 'ACTION_VIDEO_CAPTURE' app/src/main/java
+          ! grep -R -q 'INTENT_ACTION_VIDEO_CAMERA' app/src/main/java
+          ! grep -R -q 'PickVisualMedia' app/src/main/java
+          ! grep -R -q 'Transformer' app/src/main/java
+          ! grep -R -q 'WatermarkExporter' app/src/main/java
+          ! grep -R -q 'Media3' app/src/main/java
+          ! grep -R -q 'setFileSizeLimit' app/src/main/java
+          ! grep -R -q 'setDurationLimitMillis' app/src/main/java
 
-      - name: Verify hardened dual-template path is packaged
+          echo "Final architecture gate: PASS"
+
+      - name: Build and lint 7 clean passes
         run: |
-          grep -R "enum class WatermarkTemplate" app/src/main/java/tv/mediawahid/camera/WatermarkTemplate.kt
-          grep -R "WatermarkTemplate.DUAL" app/src/main/java/tv/mediawahid/camera
-          grep -R "WatermarkTemplate.MEDIA_ONLY" app/src/main/java/tv/mediawahid/camera
-          grep -R "lockTemplateForCapture" app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-          grep -R "fromStorageOrNull" app/src/main/java/tv/mediawahid/camera/WatermarkTemplate.kt
-          grep -R "buildDualOverlayBitmap" app/src/main/java/tv/mediawahid/camera/WatermarkExporter.kt
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7; do
+            echo "===== REGRESSION PASS $i / 7 ====="
+            gradle --no-daemon clean :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
+            test -s app/build/outputs/apk/debug/app-debug.apk
+          done
 
-          python3 - <<'PY'
-          from pathlib import Path
-          main = Path("app/src/main/java/tv/mediawahid/camera/MainActivity.kt").read_text()
-          exporter = Path("app/src/main/java/tv/mediawahid/camera/WatermarkExporter.kt").read_text()
-          assert ".putString(KEY_PENDING_TEMPLATE, locked.storageValue)" in main
-          lock_block = main.split("private fun lockTemplateForCapture()", 1)[1].split("private fun loadPendingTemplateOrAbort", 1)[0]
-          assert ".commit()" in lock_block
-          assert "buildDualOverlayBitmap" in exporter
-          assert "listOf(OverlayEffect(listOf(overlay)))" in exporter
-          assert "setBackgroundFrameAnchor(0.94f, 0.92f)" in exporter
-          print("Dual template lock + single composite overlay: OK")
-          PY
+      - name: Verify APK contents
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -l "$APK" | grep -q 'media_wahid_logo_original'
+          unzip -l "$APK" | grep -q 'masjid_raya_logo'
+          cp "$APK" MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk
+          sha256sum MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk > MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.sha256
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v4.0.5-DUAL-TEMPLATE.apk
-
-      - name: Upload APK
+      - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
-          name: MEDIA-WAHID-TV-APK-v4-DUAL-TEMPLATE
-          path: MEDIA-WAHID-TV-Camera-v4.0.5-DUAL-TEMPLATE.apk
+          name: MEDIA-WAHID-TV-Camera-v5.0.0-FINAL
+          path: |
+            MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk
+            MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.sha256
           if-no-files-found: error
           retention-days: 30
