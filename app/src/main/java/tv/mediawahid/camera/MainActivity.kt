@@ -479,7 +479,7 @@ class MainActivity : ComponentActivity() {
         mediaButton.text = if (!dual) "✓ MEDIA WAHID TV" else "MEDIA WAHID TV"
     }
 
-    @OptIn(ExperimentalPersistentRecording::class)
+    @ExperimentalPersistentRecording
     @SuppressLint("MissingPermission")
     private fun startRecording() {
         if (!cameraReady || effectFailed || stoppingRecording) {
