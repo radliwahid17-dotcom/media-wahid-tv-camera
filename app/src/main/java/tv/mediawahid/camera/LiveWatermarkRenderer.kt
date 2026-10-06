@@ -40,17 +40,21 @@ class LiveWatermarkRenderer(
     @Volatile
     var template: WatermarkTemplate = WatermarkTemplate.DUAL
 
+    /**
+     * Returns false until the preview transform is valid. OverlayEffect drops those
+     * frames, which is intentional: a frame must never be emitted without watermark.
+     */
     fun draw(frame: Frame): Boolean {
         val canvas = frame.overlayCanvas
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
 
-        val sensorToView = previewView.sensorToViewTransform ?: return true
+        val sensorToView = previewView.sensorToViewTransform ?: return false
         val viewWidth = previewView.width.toFloat()
         val viewHeight = previewView.height.toFloat()
-        if (viewWidth <= 0f || viewHeight <= 0f) return true
+        if (viewWidth <= 0f || viewHeight <= 0f) return false
 
         uiToSensor.reset()
-        if (!sensorToView.invert(uiToSensor)) return true
+        if (!sensorToView.invert(uiToSensor)) return false
 
         uiToBuffer.set(uiToSensor)
         uiToBuffer.postConcat(frame.sensorToBufferTransform)
@@ -59,8 +63,8 @@ class LiveWatermarkRenderer(
         canvas.setMatrix(uiToBuffer)
 
         drawTemplate(
-            canvasWidth = viewWidth,
-            canvasHeight = viewHeight,
+            viewWidth = viewWidth,
+            viewHeight = viewHeight,
             canvas = canvas,
             activeTemplate = template
         )
@@ -70,12 +74,12 @@ class LiveWatermarkRenderer(
     }
 
     private fun drawTemplate(
-        canvasWidth: Float,
-        canvasHeight: Float,
+        viewWidth: Float,
+        viewHeight: Float,
         canvas: android.graphics.Canvas,
         activeTemplate: WatermarkTemplate,
     ) {
-        val shortEdge = minOf(canvasWidth, canvasHeight).coerceAtLeast(1f)
+        val shortEdge = minOf(viewWidth, viewHeight).coerceAtLeast(1f)
         val targetWidth = (shortEdge * 0.20f)
             .roundToInt()
             .coerceIn(150, 620)
@@ -92,13 +96,12 @@ class LiveWatermarkRenderer(
             )
         }
 
-        val rightLogoWidth = targetWidth
         drawLogo(
             canvas = canvas,
             logo = mediaLogo,
-            left = canvasWidth - margin - rightLogoWidth,
+            left = (viewWidth - margin - targetWidth).coerceAtLeast(0f),
             top = margin,
-            targetWidth = rightLogoWidth
+            targetWidth = targetWidth
         )
     }
 
@@ -111,14 +114,12 @@ class LiveWatermarkRenderer(
     ) {
         val targetHeight = targetWidth * logo.height.toFloat() / logo.width.toFloat()
         destination.set(
-            left.coerceAtLeast(0f),
-            top.coerceAtLeast(0f),
-            (left + targetWidth).coerceAtMost(canvas.width.toFloat()),
-            (top + targetHeight).coerceAtMost(canvas.height.toFloat())
+            left,
+            top,
+            left + targetWidth,
+            top + targetHeight
         )
-        if (destination.width() > 1f && destination.height() > 1f) {
-            canvas.drawBitmap(logo, null, destination, paint)
-        }
+        canvas.drawBitmap(logo, null, destination, paint)
     }
 
     override fun close() {
