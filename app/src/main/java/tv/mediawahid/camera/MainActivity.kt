@@ -34,6 +34,7 @@ import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.effects.OverlayEffect
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.ExperimentalPersistentRecording
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
@@ -478,6 +479,7 @@ class MainActivity : ComponentActivity() {
         mediaButton.text = if (!dual) "✓ MEDIA WAHID TV" else "MEDIA WAHID TV"
     }
 
+    @OptIn(ExperimentalPersistentRecording::class)
     @SuppressLint("MissingPermission")
     private fun startRecording() {
         if (!cameraReady || effectFailed || stoppingRecording) {
