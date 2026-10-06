@@ -25,6 +25,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraEffect
 import androidx.camera.core.CameraSelector
@@ -479,7 +480,7 @@ class MainActivity : ComponentActivity() {
         mediaButton.text = if (!dual) "✓ MEDIA WAHID TV" else "MEDIA WAHID TV"
     }
 
-    @ExperimentalPersistentRecording
+    @OptIn(ExperimentalPersistentRecording::class)
     @SuppressLint("MissingPermission")
     private fun startRecording() {
         if (!cameraReady || effectFailed || stoppingRecording) {
