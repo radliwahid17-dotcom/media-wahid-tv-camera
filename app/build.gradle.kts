@@ -23,6 +23,14 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    lint {
+        // Core 1.19.x requires API 37 + AGP 9.1. The final app intentionally
+        // pins Core 1.17.0 on the validated API 36 / AGP 8.10.1 toolchain.
+        disable += "GradleDependency"
+        warningsAsErrors = true
+        abortOnError = true
+    }
 }
 
 dependencies {
