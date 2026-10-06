@@ -1079,16 +1079,18 @@ class MainActivity : ComponentActivity() {
                 override fun onDown(e: MotionEvent): Boolean = true
 
                 override fun onSingleTapUp(e: MotionEvent): Boolean {
-                    previewView.performClick()
                     focusAt(e.x, e.y)
                     return true
                 }
             }
         )
 
-        previewView.setOnTouchListener { _, event ->
+        previewView.setOnTouchListener { view, event ->
             scaleDetector.onTouchEvent(event)
             gestureDetector.onTouchEvent(event)
+            if (event.action == MotionEvent.ACTION_UP) {
+                view.performClick()
+            }
             true
         }
     }
@@ -1176,7 +1178,7 @@ class MainActivity : ComponentActivity() {
             }
 
         if (!isRecording && !recordingStarting && !finalizing) {
-            recordButton.text = "REKAM"
+            recordButton.text = getString(R.string.button_record)
         }
     }
 
