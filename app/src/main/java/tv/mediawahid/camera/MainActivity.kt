@@ -305,7 +305,9 @@ class MainActivity : ComponentActivity() {
             {
                 try {
                     cameraProvider = future.get()
-                    bindCurrentCamera(showError = true)
+                    previewView.post {
+                        bindCurrentCamera(showError = true)
+                    }
                 } catch (error: Throwable) {
                     cameraReady = false
                     statusText.text = "KAMERA GAGAL DISIAPKAN"
@@ -561,7 +563,7 @@ class MainActivity : ComponentActivity() {
         } catch (error: Throwable) {
             activeRecording = null
             stoppingRecording = false
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
             updateControlState()
 
             statusText.text = "GAGAL MEMULAI REKAMAN"
@@ -615,7 +617,7 @@ class MainActivity : ComponentActivity() {
         } catch (_: Throwable) {
         }
 
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         updateControlState()
         updateStorageLabel()
 
