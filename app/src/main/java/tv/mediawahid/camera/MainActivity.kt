@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
             startCamera()
         } else {
             cameraReady = false
-            statusText.text = "Izin kamera wajib untuk menjalankan aplikasi"
+            statusText.text = getString(R.string.status_camera_permission_required)
             refreshControlState()
             Toast.makeText(
                 this,
@@ -218,7 +218,7 @@ class MainActivity : ComponentActivity() {
         }
 
         timerText = TextView(this).apply {
-            text = "00:00:00"
+            text = getString(R.string.timer_zero)
             setTextColor(Color.WHITE)
             textSize = 21f
             gravity = Gravity.CENTER
@@ -233,7 +233,7 @@ class MainActivity : ComponentActivity() {
         topPanel.addView(timerText, LinearLayout.LayoutParams(-2, -2))
 
         statusText = TextView(this).apply {
-            text = "Menyiapkan kamera dan watermark..."
+            text = getString(R.string.status_preparing_camera)
             setTextColor(Color.WHITE)
             textSize = 12f
             gravity = Gravity.CENTER
@@ -246,8 +246,8 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER
         }
 
-        dualTemplateButton = compactButton("MASJID + MEDIA", false)
-        mediaTemplateButton = compactButton("MEDIA ONLY", false)
+        dualTemplateButton = compactButton(getString(R.string.button_dual_template), false)
+        mediaTemplateButton = compactButton(getString(R.string.button_media_only), false)
 
         templateRow.addView(
             dualTemplateButton,
@@ -287,10 +287,10 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER
         }
 
-        switchButton = compactButton("GANTI", false)
-        photoButton = compactButton("FOTO", false)
-        recordButton = compactButton("REKAM", true)
-        torchButton = compactButton("FLASH", false)
+        switchButton = compactButton(getString(R.string.button_switch_camera), false)
+        photoButton = compactButton(getString(R.string.button_photo), false)
+        recordButton = compactButton(getString(R.string.button_record), true)
+        torchButton = compactButton(getString(R.string.button_flash), false)
 
         controlsRow.addView(
             switchButton,
@@ -323,7 +323,7 @@ class MainActivity : ComponentActivity() {
 
         bottomPanel.addView(
             TextView(this).apply {
-                text = "FHD • watermark langsung tertanam • tidak perlu render ulang"
+                text = getString(R.string.camera_footer)
                 setTextColor(Color.rgb(196, 204, 214))
                 textSize = 11f
                 gravity = Gravity.CENTER
@@ -407,8 +407,7 @@ class MainActivity : ComponentActivity() {
                 if (rendered && !watermarkReady) {
                     watermarkReady = true
                     if (!isRecording && !recordingStarting && !finalizing) {
-                        statusText.text =
-                            "Siap • watermark live aktif • " + freeStorageLabel()
+                        statusText.text = getString(R.string.status_ready_storage, freeStorageLabel())
                     }
                     refreshControlState()
                 }
@@ -418,7 +417,7 @@ class MainActivity : ComponentActivity() {
         } catch (error: Throwable) {
             effectFailed = true
             watermarkReady = false
-            statusText.text = "Watermark gagal disiapkan"
+            statusText.text = getString(R.string.status_watermark_setup_failed)
             Toast.makeText(
                 this,
                 error.message ?: "Gagal menyiapkan watermark.",
@@ -445,7 +444,7 @@ class MainActivity : ComponentActivity() {
         }
 
         runOnUiThread {
-            statusText.text = "Watermark error • rekaman dihentikan demi keamanan hasil"
+            statusText.text = getString(R.string.status_watermark_runtime_failed)
             refreshControlState()
             Toast.makeText(
                 this,
@@ -469,14 +468,14 @@ class MainActivity : ComponentActivity() {
 
     private fun startCamera() {
         if (effectFailed || !::overlayEffect.isInitialized) {
-            statusText.text = "Kamera tidak dibuka karena watermark belum aman"
+            statusText.text = getString(R.string.status_camera_blocked_watermark)
             return
         }
 
         cameraReady = false
         watermarkReady = false
         refreshControlState()
-        statusText.text = "Membuka kamera..."
+        statusText.text = getString(R.string.status_opening_camera)
 
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener(
@@ -489,7 +488,7 @@ class MainActivity : ComponentActivity() {
                     bindCamera()
                 } catch (error: Throwable) {
                     cameraReady = false
-                    statusText.text = "Kamera gagal dibuka"
+                    statusText.text = getString(R.string.status_camera_open_failed)
                     refreshControlState()
                     Toast.makeText(
                         this,
@@ -567,13 +566,13 @@ class MainActivity : ComponentActivity() {
             updateTorchUi()
 
             if (!isRecording && !recordingStarting && !finalizing) {
-                statusText.text = "Kamera aktif • menunggu watermark live..."
+                statusText.text = getString(R.string.status_camera_waiting_watermark)
             }
 
             refreshControlState()
         } catch (error: Throwable) {
             cameraReady = false
-            statusText.text = "Kamera gagal dikonfigurasi"
+            statusText.text = getString(R.string.status_camera_config_failed)
             refreshControlState()
             Toast.makeText(
                 this,
@@ -609,7 +608,7 @@ class MainActivity : ComponentActivity() {
         selectedTemplate = template
         watermarkRenderer.template = template
         updateTemplateUi()
-        statusText.text = "Template aktif • " + template.displayName
+        statusText.text = getString(R.string.status_template_active, template.displayName)
     }
 
     private fun updateTemplateUi() {
@@ -632,9 +631,9 @@ class MainActivity : ComponentActivity() {
         )
 
         dualTemplateButton.text =
-            if (dualSelected) "✓ MASJID + MEDIA" else "MASJID + MEDIA"
+            if (dualSelected) getString(R.string.button_dual_template_active) else getString(R.string.button_dual_template)
         mediaTemplateButton.text =
-            if (!dualSelected) "✓ MEDIA ONLY" else "MEDIA ONLY"
+            if (!dualSelected) getString(R.string.button_media_only_active) else getString(R.string.button_media_only)
     }
 
     @androidx.annotation.OptIn(markerClass = [ExperimentalPersistentRecording::class])
@@ -714,7 +713,7 @@ class MainActivity : ComponentActivity() {
                 pending = pending.withAudioEnabled()
             }
 
-            statusText.text = "Memulai rekaman • template terkunci"
+            statusText.text = getString(R.string.status_recording_starting)
             refreshControlState()
 
             activeRecording = pending.start(
@@ -726,7 +725,7 @@ class MainActivity : ComponentActivity() {
             activeRecording = null
             recordingStarting = false
             lockedRecordingTemplate = null
-            statusText.text = "Rekaman gagal dimulai"
+            statusText.text = getString(R.string.status_recording_start_failed)
             refreshControlState()
             Toast.makeText(
                 this,
@@ -743,20 +742,22 @@ class MainActivity : ComponentActivity() {
                 isRecording = true
                 finalizing = false
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
-                recordButton.text = "STOP"
-                statusText.text =
-                    "REC • " + (lockedRecordingTemplate ?: selectedTemplate).displayName
+                recordButton.text = getString(R.string.button_stop)
+                statusText.text = getString(
+                    R.string.status_recording_template,
+                    (lockedRecordingTemplate ?: selectedTemplate).displayName
+                )
                 refreshControlState()
             }
 
             is VideoRecordEvent.Status -> {
                 lastRecordedDurationNanos = event.recordingStats.recordedDurationNanos
                 timerText.text = formatDuration(lastRecordedDurationNanos)
-                statusText.text =
-                    "REC • " +
-                        formatBytes(event.recordingStats.numBytesRecorded) +
-                        " • " +
-                        freeStorageLabel()
+                statusText.text = getString(
+                    R.string.status_recording_metrics,
+                    formatBytes(event.recordingStats.numBytesRecorded),
+                    freeStorageLabel()
+                )
             }
 
             is VideoRecordEvent.Finalize -> {
@@ -771,15 +772,15 @@ class MainActivity : ComponentActivity() {
         if (!isRecording || finalizing) return
 
         finalizing = true
-        recordButton.text = "MENYIMPAN"
-        statusText.text = "Menyelesaikan file..."
+        recordButton.text = getString(R.string.button_saving)
+        statusText.text = getString(R.string.status_finalizing_file)
         refreshControlState()
 
         try {
             activeRecording?.stop()
         } catch (error: Throwable) {
             finalizing = false
-            statusText.text = "Gagal menghentikan rekaman dengan aman"
+            statusText.text = getString(R.string.status_stop_failed)
             Toast.makeText(
                 this,
                 error.message ?: "Gagal menghentikan rekaman.",
@@ -809,15 +810,14 @@ class MainActivity : ComponentActivity() {
 
         if (wasEffectFailure) {
             deleteOutput(outputUri)
-            statusText.text = "Video dibuang karena watermark tidak terjamin"
+            statusText.text = getString(R.string.status_video_discarded_watermark)
             Toast.makeText(
                 this,
                 "Video tidak disimpan karena sistem watermark sempat gagal.",
                 Toast.LENGTH_LONG
             ).show()
         } else if (!event.hasError()) {
-            statusText.text =
-                "VIDEO TERSIMPAN ✓ • " + formatDuration(duration) + " • watermark tertanam"
+            statusText.text = getString(R.string.status_video_saved, formatDuration(duration))
             Toast.makeText(
                 this,
                 "VIDEO TERSIMPAN ✓",
@@ -829,7 +829,7 @@ class MainActivity : ComponentActivity() {
 
         deleteFinalizedOutput = false
         timerText.text = formatDuration(duration)
-        recordButton.text = "REKAM"
+        recordButton.text = getString(R.string.button_record)
         refreshControlState()
 
         if (
@@ -893,7 +893,7 @@ class MainActivity : ComponentActivity() {
             bindCamera()
         } catch (error: Throwable) {
             cameraReady = false
-            statusText.text = "Recorder belum berhasil dipulihkan"
+            statusText.text = getString(R.string.status_recorder_recovery_failed)
             refreshControlState()
         }
     }
@@ -962,8 +962,7 @@ class MainActivity : ComponentActivity() {
                 override fun onImageSaved(
                     outputFileResults: ImageCapture.OutputFileResults
                 ) {
-                    statusText.text =
-                        "FOTO TERSIMPAN ✓ • " + selectedTemplate.displayName
+                    statusText.text = getString(R.string.status_photo_saved, selectedTemplate.displayName)
                     Toast.makeText(
                         this@MainActivity,
                         "FOTO TERSIMPAN ✓",
@@ -973,7 +972,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 override fun onError(exception: ImageCaptureException) {
-                    statusText.text = "Foto gagal disimpan"
+                    statusText.text = getString(R.string.status_photo_failed)
                     Toast.makeText(
                         this@MainActivity,
                         exception.message ?: "Foto gagal.",
@@ -1019,9 +1018,9 @@ class MainActivity : ComponentActivity() {
 
             statusText.text =
                 if (isRecording) {
-                    "REC • kamera diganti • file tetap satu"
+                    getString(R.string.status_camera_switched_recording)
                 } else {
-                    "Kamera diganti • watermark tetap aktif"
+                    getString(R.string.status_camera_switched_idle)
                 }
         } catch (error: Throwable) {
             Toast.makeText(
@@ -1050,7 +1049,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateTorchUi() {
-        torchButton.text = if (torchEnabled) "FLASH ON" else "FLASH"
+        torchButton.text = if (torchEnabled) getString(R.string.button_flash_on) else getString(R.string.button_flash)
         torchButton.alpha =
             if (camera?.cameraInfo?.hasFlashUnit() == true) 1f else 0.5f
     }
@@ -1080,6 +1079,7 @@ class MainActivity : ComponentActivity() {
                 override fun onDown(e: MotionEvent): Boolean = true
 
                 override fun onSingleTapUp(e: MotionEvent): Boolean {
+                    previewView.performClick()
                     focusAt(e.x, e.y)
                     return true
                 }
