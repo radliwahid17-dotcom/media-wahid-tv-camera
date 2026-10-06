@@ -4,7 +4,7 @@ Versi final mengganti alur lama "buka Samsung Camera → pilih video → render 
 
 ## Tujuan utama
 - Rekaman panjang tanpa batas durasi buatan aplikasi.
-- Target utama FHD (1920×1080) dengan fallback aman bila perangkat tidak mendukung.
+- Target utama FHD (1920×1080) dengan fallback aman bila perangkat tidak mendukung. Bitrate ditargetkan 8 Mbps untuk endurance dan ukuran file yang lebih terprediksi.
 - Watermark ditanam langsung saat frame direkam, jadi setelah tombol STOP tidak ada proses render video panjang.
 - Video langsung disimpan ke Galeri → Movies → MEDIA WAHID TV.
 - Foto langsung disimpan ke Galeri → Pictures → MEDIA WAHID TV.
@@ -26,7 +26,7 @@ Versi final mengganti alur lama "buka Samsung Camera → pilih video → render 
 ## Long recording
 Aplikasi tidak menetapkan batas 30 detik, 50 menit, 90 menit, atau batas durasi lain. Durasi nyata dibatasi oleh storage, kondisi termal perangkat, baterai, dan kemampuan encoder perangkat.
 
-Untuk target operasional 90 menit, gunakan FHD, storage kosong yang cukup, baterai memadai, dan jangan pindahkan aplikasi ke background selama recording.
+Untuk target operasional 90 menit, aplikasi mensyaratkan minimal 8 GB ruang kosong sebelum mulai dan akan menghentikan recording secara aman jika ruang kosong turun di bawah 1 GB. Baterai dan kondisi termal perangkat tetap perlu dijaga.
 
 ## Build target
 - Android minSdk 29
