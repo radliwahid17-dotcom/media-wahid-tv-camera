@@ -43,6 +43,8 @@ jobs:
           grep -q 'cameraX = "1.6.2"' "$GRADLE"
           grep -q 'Quality.FHD' "$MAIN"
           grep -q 'asPersistentRecording()' "$MAIN"
+          grep -q 'ExperimentalPersistentRecording' "$MAIN"
+          grep -q 'waitForPreviewReady' "$MAIN"
           grep -q 'MediaStoreOutputOptions.Builder' "$MAIN"
           grep -q 'PREVIEW or VIDEO_CAPTURE or IMAGE_CAPTURE' "$MAIN"
           grep -q 'watermarkRenderer?.template = recordingTemplate' "$MAIN"
