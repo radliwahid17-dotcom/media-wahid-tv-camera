@@ -1,54 +1,36 @@
-# MEDIA WAHID TV Camera v5.0.0 FINAL
+# MEDIA WAHID TV Camera v5.0.0 — Final Live Watermark
 
-Versi final mengganti arsitektur lama "buka Samsung Camera → pilih video → render watermark" dengan CameraX live watermark.
+Versi final mengganti alur lama "buka Samsung Camera → pilih video → render ulang" dengan CameraX native di dalam aplikasi.
 
-## Target perangkat utama
-- Samsung Galaxy A16 5G (SM-A166P family)
-- Target video: FHD 1920×1080
-- Tidak ada batas durasi buatan aplikasi
-- Target operasional: rekaman 90 menit atau lebih selama storage, baterai, suhu perangkat, dan Android tetap memungkinkan
-
-## Cara kerja
-1. Pilih template sebelum merekam.
-2. Tekan REC.
-3. Watermark diproses langsung pada frame kamera saat perekaman.
-4. Video ditulis langsung ke MediaStore / Galeri.
-5. Tekan STOP; file hanya perlu difinalisasi, tidak dirender ulang berjam-jam.
+## Tujuan utama
+- Rekaman panjang tanpa batas durasi buatan aplikasi.
+- Target utama FHD (1920×1080) dengan fallback aman bila perangkat tidak mendukung.
+- Watermark ditanam langsung saat frame direkam, jadi setelah tombol STOP tidak ada proses render video panjang.
+- Video langsung disimpan ke Galeri → Movies → MEDIA WAHID TV.
+- Foto langsung disimpan ke Galeri → Pictures → MEDIA WAHID TV.
+- Template dipilih sebelum foto/rekam dan dikunci selama rekaman.
+- Kamera depan/belakang dapat diganti saat recording menggunakan persistent recording.
+- Pinch-to-zoom dan tap-to-focus.
+- Rekaman tidak boleh keluar lewat tombol Back sebelum dihentikan.
+- Jika storage hampir habis, aplikasi menghentikan rekaman secara aman.
+- File hasil rekaman yang finalize dengan error dibersihkan agar tidak meninggalkan file rusak.
 
 ## Template
 ### MASJID + MEDIA WAHID TV
-- Masjid di kiri atas
-- MEDIA WAHID TV di kanan atas
+- Logo Masjid kiri atas.
+- Logo MEDIA WAHID TV kanan atas.
 
 ### MEDIA WAHID TV
-- MEDIA WAHID TV di kanan atas
+- Logo MEDIA WAHID TV kanan atas.
 
-Template dikunci selama rekaman agar watermark tidak berubah di tengah file.
+## Long recording
+Aplikasi tidak menetapkan batas 30 detik, 50 menit, 90 menit, atau batas durasi lain. Durasi nyata dibatasi oleh storage, kondisi termal perangkat, baterai, dan kemampuan encoder perangkat.
 
-## Rekaman panjang
-- CameraX Recorder FHD dengan fallback otomatis bila perangkat tidak mendukung profil FHD.
-- Persistent recording dipakai agar rebind / switch kamera tidak otomatis memutus sesi.
-- Tidak menggunakan EXTRA_DURATION_LIMIT.
-- Tidak menggunakan external Samsung capture intent.
-- Tidak ada video picker.
-- Tidak ada post-render Media3 untuk video.
-- Hasil video ditulis langsung ke Movies/MEDIA WAHID TV.
+Untuk target operasional 90 menit, gunakan FHD, storage kosong yang cukup, baterai memadai, dan jangan pindahkan aplikasi ke background selama recording.
 
-## Foto
-Foto tetap diproses fail-closed: hasil baru masuk Galeri setelah watermark foto berhasil dibuat dan diverifikasi.
-
-## Safety / fail-closed
-Jika engine overlay mengalami unrecoverable error, aplikasi menghentikan rekaman dan menonaktifkan capture agar tidak menghasilkan video tanpa watermark.
-
-## Final CI gate
-GitHub Actions menjalankan:
-- validasi asset logo,
-- static architecture checks,
-- Android lint,
-- unit test task,
-- 7 clean APK builds berturut-turut,
-- integrity test APK,
-- verifikasi kedua logo ada di APK.
-
-Artifact:
-**MEDIA-WAHID-TV-Camera-v5.0.0-FINAL**
+## Build target
+- Android minSdk 29
+- CameraX 1.6.2 stable
+- FHD preferred
+- Direct MediaStore output
+- Live OverlayEffect watermark
