@@ -434,6 +434,7 @@ class MainActivity : ComponentActivity() {
         deleteFinalizedOutput = activeRecording != null
 
         if (activeRecording != null) {
+            finalizing = true
             try {
                 activeRecording?.stop()
             } catch (_: Throwable) {
@@ -651,7 +652,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val freeBytes = freeStorageBytes()
-        if (freeBytes in 0 until HARD_MIN_FREE_BYTES) {
+        if (freeBytes in 0L until HARD_MIN_FREE_BYTES) {
             Toast.makeText(
                 this,
                 "Penyimpanan terlalu penuh. Sisakan minimal 1 GB sebelum merekam.",
@@ -1145,10 +1146,15 @@ class MainActivity : ComponentActivity() {
             idleReady && !isRecording && !recordingStarting && !finalizing
         photoButton.alpha = if (photoButton.isEnabled) 1f else 0.55f
 
-        dualTemplateButton.isEnabled =
-            !isRecording && !recordingStarting && !finalizing
-        mediaTemplateButton.isEnabled =
-            !isRecording && !recordingStarting && !finalizing
+        val templatesAvailable =
+            !effectFailed &&
+                ::watermarkRenderer.isInitialized &&
+                !isRecording &&
+                !recordingStarting &&
+                !finalizing
+
+        dualTemplateButton.isEnabled = templatesAvailable
+        mediaTemplateButton.isEnabled = templatesAvailable
         dualTemplateButton.alpha =
             if (dualTemplateButton.isEnabled) 1f else 0.55f
         mediaTemplateButton.alpha =
