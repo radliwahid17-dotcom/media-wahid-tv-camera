@@ -101,8 +101,6 @@ class MainActivity : ComponentActivity() {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
     }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
-
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
@@ -158,7 +156,7 @@ class MainActivity : ComponentActivity() {
         )
 
         if (hasCameraPermission()) {
-            startCamera()
+            previewView.post { startCamera() }
         } else {
             permissionLauncher.launch(
                 arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
@@ -183,7 +181,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        recording?.stop()
         recording?.close()
         recording = null
 
