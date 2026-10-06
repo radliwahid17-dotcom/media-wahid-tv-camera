@@ -26,7 +26,7 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-ktx:1.13.0")
 
     val cameraX = "1.6.2"
