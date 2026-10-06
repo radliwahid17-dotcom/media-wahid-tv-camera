@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
     private var cameraReady = false
     private var lowStorageStopRequested = false
     private var overlayFailed = false
+    private var photoCaptureInProgress = false
 
     private val preferences by lazy {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -353,10 +354,10 @@ class MainActivity : ComponentActivity() {
         }
 
     private fun selectTemplate(template: WatermarkTemplate) {
-        if (recording != null) {
+        if (recording != null || photoCaptureInProgress) {
             Toast.makeText(
                 this,
-                "Template dikunci selama rekaman.",
+                if (recording != null) "Template dikunci selama rekaman." else "Tunggu foto selesai.",
                 Toast.LENGTH_SHORT
             ).show()
             return
@@ -522,6 +523,8 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalPersistentRecording::class)
     @SuppressLint("MissingPermission")
     private fun toggleRecording() {
+        if (photoCaptureInProgress) return
+
         val active = recording
         if (active != null) {
             recordButton.isEnabled = false
@@ -682,7 +685,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun takePhoto() {
-        if (!cameraReady || overlayFailed || recording != null) return
+        if (!cameraReady || overlayFailed || recording != null || photoCaptureInProgress) return
 
         if (availableStorageBytes() in 0 until STOP_FREE_BYTES) {
             Toast.makeText(this, "Storage hampir penuh.", Toast.LENGTH_LONG).show()
@@ -710,7 +713,12 @@ class MainActivity : ComponentActivity() {
             values
         ).build()
 
+        photoCaptureInProgress = true
+        recordButton.isEnabled = false
         photoButton.isEnabled = false
+        switchButton.isEnabled = false
+        dualButton.isEnabled = false
+        mediaOnlyButton.isEnabled = false
         setStatus("Mengambil foto...")
 
         capture.takePicture(
@@ -718,7 +726,8 @@ class MainActivity : ComponentActivity() {
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    photoButton.isEnabled = true
+                    photoCaptureInProgress = false
+                    restoreIdleControls()
                     setStatus("FOTO TERSIMPAN ✓ • watermark sudah tertanam")
                     Toast.makeText(
                         this@MainActivity,
@@ -728,7 +737,8 @@ class MainActivity : ComponentActivity() {
                 }
 
                 override fun onError(exception: ImageCaptureException) {
-                    photoButton.isEnabled = true
+                    photoCaptureInProgress = false
+                    restoreIdleControls()
                     setStatus("Foto gagal")
                     Toast.makeText(
                         this@MainActivity,
@@ -742,7 +752,7 @@ class MainActivity : ComponentActivity() {
 
     private fun switchCamera() {
         val provider = cameraProvider ?: return
-        if (!cameraReady) return
+        if (!cameraReady || photoCaptureInProgress) return
 
         val newFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
             CameraSelector.LENS_FACING_FRONT
@@ -785,13 +795,12 @@ class MainActivity : ComponentActivity() {
                     },
                     onTimeout = {
                         switchButton.isEnabled = true
-                        setStatus(
-                            if (recording != null) {
-                                "REC • preview belum stabil"
-                            } else {
-                                "Preview gagal stabil"
-                            }
-                        )
+                        if (recording != null) {
+                            setStatus("Preview gagal stabil • rekaman dihentikan aman")
+                            recording?.stop()
+                        } else {
+                            setStatus("Preview gagal stabil")
+                        }
                     }
                 )
             }
@@ -866,6 +875,15 @@ class MainActivity : ComponentActivity() {
             .build()
 
         camera.cameraControl.startFocusAndMetering(action)
+    }
+
+    private fun restoreIdleControls() {
+        if (recording != null || overlayFailed || !cameraReady) return
+        recordButton.isEnabled = true
+        photoButton.isEnabled = true
+        switchButton.isEnabled = true
+        dualButton.isEnabled = true
+        mediaOnlyButton.isEnabled = true
     }
 
     private fun waitForPreviewReady(
