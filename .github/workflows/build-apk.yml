@@ -120,6 +120,17 @@ jobs:
       - name: Clean build and lint
         run: gradle --no-daemon clean :app:assembleDebug :app:lintDebug
 
+      - name: Print Android lint audit
+        run: |
+          REPORT="app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt"
+          if [ -f "$REPORT" ]; then
+            echo "========== ANDROID LINT AUDIT =========="
+            cat "$REPORT"
+          else
+            echo "Lint text report not found"
+            exit 1
+          fi
+
       - name: Ten-round build and APK integrity stress gate
         run: |
           for i in $(seq 1 10); do
