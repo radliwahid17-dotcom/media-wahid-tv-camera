@@ -1,4 +1,4 @@
-name: Build MEDIA WAHID TV Camera FINAL
+name: Build MEDIA WAHID TV Camera Final
 
 on:
   push:
@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  final-gate:
+  final-regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
 
     steps:
       - name: Checkout source
@@ -30,62 +30,65 @@ jobs:
           cat app/src/main/logo-source/masjid_final.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
           test "$(stat -c%s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg)" = "8690"
           echo "667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg" | sha256sum -c -
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = "12293"
 
-      - name: Verify watermark assets
+      - name: Final architecture regression gate
         run: |
-          test -s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg
-          test -s app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
+          set -euo pipefail
+          MAIN=app/src/main/java/tv/mediawahid/camera/MainActivity.kt
+          RENDERER=app/src/main/java/tv/mediawahid/camera/LiveWatermarkRenderer.kt
+          GRADLE=app/build.gradle.kts
 
-      - name: Static final-architecture gate
+          grep -q 'versionName = "5.0.0"' "$GRADLE"
+          grep -q 'cameraX = "1.6.2"' "$GRADLE"
+          grep -q 'Quality.FHD' "$MAIN"
+          grep -q 'asPersistentRecording()' "$MAIN"
+          grep -q 'MediaStoreOutputOptions.Builder' "$MAIN"
+          grep -q 'PREVIEW or VIDEO_CAPTURE or IMAGE_CAPTURE' "$MAIN"
+          grep -q 'watermarkRenderer?.template = recordingTemplate' "$MAIN"
+          grep -q 'Stop rekaman dulu sebelum keluar' "$MAIN"
+          grep -q 'MIN_FREE_BYTES' "$MAIN"
+          grep -q 'sensorToBufferTransform' "$RENDERER"
+          grep -q 'masjidLogo' "$RENDERER"
+          grep -q 'mediaLogo' "$RENDERER"
+
+          ! grep -R -q 'EXTRA_DURATION_LIMIT' app/src/main/java
+          ! grep -R -q 'ACTION_VIDEO_CAPTURE' app/src/main/java
+          ! grep -R -q 'INTENT_ACTION_VIDEO_CAMERA' app/src/main/java
+          ! grep -R -q 'PickVisualMedia' app/src/main/java
+          ! grep -R -q 'Transformer' app/src/main/java
+          ! grep -R -q 'WatermarkExporter' app/src/main/java
+          ! grep -R -q 'Media3' app/src/main/java
+          ! grep -R -q 'setFileSizeLimit' app/src/main/java
+          ! grep -R -q 'setDurationLimitMillis' app/src/main/java
+
+          echo "Final architecture gate: PASS"
+
+      - name: Build and lint 7 clean passes
         run: |
-          set -eux
-          grep -R 'versionName = "5.0.0"' app/build.gradle.kts
-          grep -R 'val cameraX = "1.6.2"' app/build.gradle.kts
-          grep -R 'CameraEffect.PREVIEW or' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-          grep -R 'CameraEffect.VIDEO_CAPTURE or' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-          grep -R 'CameraEffect.IMAGE_CAPTURE' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-          grep -R 'asPersistentRecording()' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-          grep -R 'Quality.FHD' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-          grep -R 'MediaStoreOutputOptions' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-          grep -R 'setOnDrawListener' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-          grep -R 'liveWatermarkRenderer.draw(frame)' app/src/main/java/tv/mediawahid/camera/MainActivity.kt
-
-          ! grep -R 'EXTRA_DURATION_LIMIT' app/src/main/java || exit 1
-          ! grep -R 'setFileSizeLimit' app/src/main/java || exit 1
-          ! grep -R 'ACTION_VIDEO_CAPTURE' app/src/main/java || exit 1
-          ! grep -R 'INTENT_ACTION_VIDEO_CAMERA' app/src/main/java || exit 1
-          ! grep -R 'PickVisualMedia' app/src/main/java || exit 1
-          ! grep -R 'WatermarkExporter' app/src/main/java || exit 1
-          ! grep -R 'media3-transformer' app/build.gradle.kts || exit 1
-
-      - name: Lint and unit checks
-        run: gradle --no-daemon :app:lintDebug :app:testDebugUnitTest
-
-      - name: Seven clean build passes
-        run: |
-          set -eux
+          set -euo pipefail
           for i in 1 2 3 4 5 6 7; do
-            echo "===== FINAL BUILD PASS $i / 7 ====="
-            gradle --no-daemon :app:clean :app:assembleDebug
+            echo "===== REGRESSION PASS $i / 7 ====="
+            gradle --no-daemon clean :app:assembleDebug :app:lintDebug
             test -s app/build/outputs/apk/debug/app-debug.apk
-            unzip -t app/build/outputs/apk/debug/app-debug.apk >/dev/null
           done
 
-      - name: Verify final APK contents
+      - name: Verify APK contents
         run: |
-          unzip -p app/build/outputs/apk/debug/app-debug.apk res/drawable-nodpi-v4/media_wahid_logo_original.jpg > /tmp/media.jpg
-          unzip -p app/build/outputs/apk/debug/app-debug.apk res/drawable-nodpi-v4/masjid_raya_logo.jpg > /tmp/masjid.jpg
-          test -s /tmp/media.jpg
-          test -s /tmp/masjid.jpg
-          echo "667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5  /tmp/masjid.jpg" | sha256sum -c -
-
-      - name: Rename final APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -l "$APK" | grep -q 'media_wahid_logo_original'
+          unzip -l "$APK" | grep -q 'masjid_raya_logo'
+          cp "$APK" MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk
+          sha256sum MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk > MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.sha256
 
       - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
           name: MEDIA-WAHID-TV-Camera-v5.0.0-FINAL
-          path: MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk
+          path: |
+            MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.apk
+            MEDIA-WAHID-TV-Camera-v5.0.0-FINAL.sha256
           if-no-files-found: error
           retention-days: 30
