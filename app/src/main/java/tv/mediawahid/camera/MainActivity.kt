@@ -733,28 +733,28 @@ class MainActivity : ComponentActivity() {
                 options,
                 ContextCompat.getMainExecutor(this),
                 object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    photoCaptureInProgress = false
-                    restoreIdleControls()
-                    setStatus("FOTO TERSIMPAN ✓ • watermark sudah tertanam")
-                    Toast.makeText(
-                        this@MainActivity,
-                        "FOTO TERSIMPAN ✓",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        photoCaptureInProgress = false
+                        restoreIdleControls()
+                        setStatus("FOTO TERSIMPAN ✓ • watermark sudah tertanam")
+                        Toast.makeText(
+                            this@MainActivity,
+                            "FOTO TERSIMPAN ✓",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
 
-                override fun onError(exception: ImageCaptureException) {
-                    photoCaptureInProgress = false
-                    restoreIdleControls()
-                    setStatus("Foto gagal")
-                    Toast.makeText(
-                        this@MainActivity,
-                        exception.message ?: "Foto gagal.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    override fun onError(exception: ImageCaptureException) {
+                        photoCaptureInProgress = false
+                        restoreIdleControls()
+                        setStatus("Foto gagal")
+                        Toast.makeText(
+                            this@MainActivity,
+                            exception.message ?: "Foto gagal.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
-            }
             )
         } catch (error: Throwable) {
             photoCaptureInProgress = false
