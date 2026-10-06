@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - final-v5-live-watermark
+      - final-v5-locked
   workflow_dispatch:
 
 jobs:
@@ -69,6 +69,8 @@ jobs:
 
           assert 'versionName = "5.0.0"' in gradle
           assert 'val cameraX = "1.6.2"' in gradle
+          assert 'warningsAsErrors = true' in gradle
+          assert 'disable += "GradleDependency"' in gradle
           assert "media3-transformer" not in gradle
           assert "camera-effects" in gradle
           assert "android.permission.CAMERA" in manifest
