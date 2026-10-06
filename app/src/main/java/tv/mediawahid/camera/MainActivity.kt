@@ -49,7 +49,6 @@ import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
-import androidx.camera.video.ExperimentalPersistentRecording
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -410,17 +409,16 @@ class MainActivity : ComponentActivity() {
                 cameraProvider = future.get()
                 buildCameraUseCases()
                 bindCamera()
-                previewView.postDelayed({
-                    cameraReady = previewView.sensorToViewTransform != null
-                    setControlsEnabled(cameraReady)
-                    setStatus(
-                        if (cameraReady) {
-                            "Siap • " + selectedTemplate.displayName
-                        } else {
-                            "Preview belum siap. Coba buka ulang aplikasi."
-                        }
-                    )
-                }, 350L)
+                waitForPreviewReady(
+                    onReady = {
+                        setControlsEnabled(true)
+                        setStatus("Siap • " + selectedTemplate.displayName)
+                    },
+                    onTimeout = {
+                        setControlsEnabled(false)
+                        setStatus("Preview gagal siap • buka ulang aplikasi")
+                    }
+                )
             } catch (error: Throwable) {
                 cameraReady = false
                 setControlsEnabled(false)
@@ -519,7 +517,6 @@ class MainActivity : ComponentActivity() {
         boundCamera = provider.bindToLifecycle(this, selector, groupBuilder.build())
     }
 
-    @OptIn(ExperimentalPersistentRecording::class)
     @OptIn(ExperimentalPersistentRecording::class)
     @SuppressLint("MissingPermission")
     private fun toggleRecording() {
@@ -773,17 +770,28 @@ class MainActivity : ComponentActivity() {
 
         runCatching { bindCamera() }
             .onSuccess {
-                previewView.postDelayed({
-                    switchButton.isEnabled = true
-                    cameraReady = previewView.sensorToViewTransform != null
-                    setStatus(
-                        if (recording != null) {
-                            "REC • " + recordingTemplate.displayName
-                        } else {
-                            "Siap • " + selectedTemplate.displayName
-                        }
-                    )
-                }, 300L)
+                waitForPreviewReady(
+                    onReady = {
+                        switchButton.isEnabled = true
+                        setStatus(
+                            if (recording != null) {
+                                "REC • " + recordingTemplate.displayName
+                            } else {
+                                "Siap • " + selectedTemplate.displayName
+                            }
+                        )
+                    },
+                    onTimeout = {
+                        switchButton.isEnabled = true
+                        setStatus(
+                            if (recording != null) {
+                                "REC • preview belum stabil"
+                            } else {
+                                "Preview gagal stabil"
+                            }
+                        )
+                    }
+                )
             }
             .onFailure { error ->
                 lensFacing = if (newFacing == CameraSelector.LENS_FACING_BACK) {
@@ -856,6 +864,45 @@ class MainActivity : ComponentActivity() {
             .build()
 
         camera.cameraControl.startFocusAndMetering(action)
+    }
+
+    private fun waitForPreviewReady(
+        attempt: Int = 0,
+        onReady: () -> Unit,
+        onTimeout: () -> Unit,
+    ) {
+        if (overlayFailed) {
+            cameraReady = false
+            onTimeout()
+            return
+        }
+
+        if (
+            previewView.width > 0 &&
+            previewView.height > 0 &&
+            previewView.sensorToViewTransform != null
+        ) {
+            cameraReady = true
+            onReady()
+            return
+        }
+
+        if (attempt >= 30) {
+            cameraReady = false
+            onTimeout()
+            return
+        }
+
+        previewView.postDelayed(
+            {
+                waitForPreviewReady(
+                    attempt = attempt + 1,
+                    onReady = onReady,
+                    onTimeout = onTimeout
+                )
+            },
+            100L
+        )
     }
 
     private fun setControlsEnabled(enabled: Boolean) {
