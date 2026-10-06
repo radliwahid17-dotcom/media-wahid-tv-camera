@@ -49,6 +49,7 @@ import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
+import androidx.camera.video.ExperimentalPersistentRecording
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -518,6 +519,7 @@ class MainActivity : ComponentActivity() {
         boundCamera = provider.bindToLifecycle(this, selector, groupBuilder.build())
     }
 
+    @OptIn(ExperimentalPersistentRecording::class)
     @OptIn(ExperimentalPersistentRecording::class)
     @SuppressLint("MissingPermission")
     private fun toggleRecording() {
