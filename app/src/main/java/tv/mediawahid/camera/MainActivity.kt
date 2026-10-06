@@ -754,6 +754,7 @@ class MainActivity : ComponentActivity() {
                         Toast.LENGTH_LONG
                     ).show()
                 }
+            }
             )
         } catch (error: Throwable) {
             photoCaptureInProgress = false
