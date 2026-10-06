@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -26,6 +27,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraEffect.IMAGE_CAPTURE
 import androidx.camera.core.CameraEffect.PREVIEW
@@ -38,6 +40,7 @@ import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.effects.OverlayEffect
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.ExperimentalPersistentRecording
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
@@ -62,7 +65,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val PREFS_NAME = "media_wahid_camera"
         private const val KEY_TEMPLATE = "selected_template"
-        private const val MIN_FREE_BYTES = 512L * 1024L * 1024L
+        private const val MIN_START_FREE_BYTES = 12L * 1024L * 1024L * 1024L
+        private const val STOP_FREE_BYTES = 1L * 1024L * 1024L * 1024L
     }
 
     private lateinit var root: FrameLayout
@@ -88,23 +92,14 @@ class MainActivity : ComponentActivity() {
     private var selectedTemplate = WatermarkTemplate.DUAL
     private var recordingTemplate = WatermarkTemplate.DUAL
     private var cameraReady = false
-    private var recordStartNanos = 0L
     private var lowStorageStopRequested = false
+    private var overlayFailed = false
 
     private val preferences by lazy {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    private val timerRunnable = object : Runnable {
-        override fun run() {
-            if (recording == null) return
-            val elapsedNanos = (System.nanoTime() - recordStartNanos).coerceAtLeast(0L)
-            timerText.text = formatDuration(elapsedNanos)
-            mainHandler.postDelayed(this, 500L)
-        }
-    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -174,8 +169,18 @@ class MainActivity : ComponentActivity() {
         hideSystemBars()
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+        if (recording == null) {
+            val rotation = previewView.display?.rotation ?: return
+            preview?.targetRotation = rotation
+            imageCapture?.targetRotation = rotation
+            videoCapture?.targetRotation = rotation
+        }
+    }
+
     override fun onDestroy() {
-        mainHandler.removeCallbacks(timerRunnable)
         recording?.stop()
         recording?.close()
         recording = null
@@ -428,13 +433,20 @@ class MainActivity : ComponentActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    @Suppress("DEPRECATION")
     private fun buildCameraUseCases() {
-        preview = Preview.Builder().build().also {
-            it.surfaceProvider = previewView.surfaceProvider
-        }
+        val rotation = previewView.display?.rotation ?: windowManager.defaultDisplay.rotation
+
+        preview = Preview.Builder()
+            .setTargetRotation(rotation)
+            .build()
+            .also {
+                it.surfaceProvider = previewView.surfaceProvider
+            }
 
         imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setTargetRotation(rotation)
             .build()
 
         val recorder = Recorder.Builder()
@@ -446,7 +458,9 @@ class MainActivity : ComponentActivity() {
             )
             .build()
 
-        videoCapture = VideoCapture.withOutput(recorder)
+        videoCapture = VideoCapture.withOutput(recorder).also {
+            it.targetRotation = rotation
+        }
 
         watermarkRenderer?.close()
         watermarkRenderer = LiveWatermarkRenderer(this, previewView).apply {
@@ -462,7 +476,11 @@ class MainActivity : ComponentActivity() {
             Handler(Looper.getMainLooper())
         ) { error ->
             runOnUiThread {
-                setStatus("Watermark engine error")
+                overlayFailed = true
+                cameraReady = false
+                runCatching { recording?.stop() }
+                setControlsEnabled(false)
+                setStatus("Watermark engine error • capture dihentikan")
                 Toast.makeText(
                     this,
                     error.message ?: "Watermark engine gagal.",
@@ -489,16 +507,18 @@ class MainActivity : ComponentActivity() {
 
         provider.unbindAll()
 
-        val group = UseCaseGroup.Builder()
+        val groupBuilder = UseCaseGroup.Builder()
             .addUseCase(previewUseCase)
             .addUseCase(photoUseCase)
             .addUseCase(videoUseCase)
             .addEffect(effect)
-            .build()
 
-        boundCamera = provider.bindToLifecycle(this, selector, group)
+        previewView.viewPort?.let { groupBuilder.setViewPort(it) }
+
+        boundCamera = provider.bindToLifecycle(this, selector, groupBuilder.build())
     }
 
+    @OptIn(ExperimentalPersistentRecording::class)
     @SuppressLint("MissingPermission")
     private fun toggleRecording() {
         val active = recording
@@ -509,17 +529,19 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        if (!cameraReady || previewView.sensorToViewTransform == null) {
+        if (!cameraReady || overlayFailed || previewView.sensorToViewTransform == null) {
             Toast.makeText(this, "Kamera belum siap.", Toast.LENGTH_SHORT).show()
             return
         }
 
-        if (!hasEnoughFreeSpace()) {
+        val freeBytes = availableStorageBytes()
+        if (freeBytes in 0 until MIN_START_FREE_BYTES) {
             Toast.makeText(
                 this,
-                "Ruang kosong kurang dari 512 MB.",
+                "Untuk target 1,5 jam FHD, sisakan minimal 12 GB storage kosong.",
                 Toast.LENGTH_LONG
             ).show()
+            setStatus("Storage belum aman untuk target 90 menit")
             return
         }
 
@@ -560,10 +582,7 @@ class MainActivity : ComponentActivity() {
     private fun handleVideoEvent(event: VideoRecordEvent) {
         when (event) {
             is VideoRecordEvent.Start -> {
-                recordStartNanos = System.nanoTime()
                 timerText.text = "00:00:00"
-                mainHandler.removeCallbacks(timerRunnable)
-                mainHandler.post(timerRunnable)
 
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
                 recordButton.text = "STOP"
@@ -584,19 +603,23 @@ class MainActivity : ComponentActivity() {
             }
 
             is VideoRecordEvent.Status -> {
-                if (!lowStorageStopRequested && !hasEnoughFreeSpace()) {
+                timerText.text = formatDuration(event.recordingStats.recordedDurationNanos)
+
+                if (
+                    !lowStorageStopRequested &&
+                    availableStorageBytes() in 0 until STOP_FREE_BYTES
+                ) {
                     lowStorageStopRequested = true
-                    setStatus("Storage hampir penuh • menghentikan rekaman dengan aman...")
+                    setStatus("Storage tersisa < 1 GB • menghentikan rekaman dengan aman...")
                     recording?.stop()
                 }
             }
 
             is VideoRecordEvent.Finalize -> {
-                mainHandler.removeCallbacks(timerRunnable)
                 val finishedRecording = recording
                 recording = null
                 finishedRecording?.close()
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
 
                 recordButton.text = "REKAM"
                 recordButton.background = roundedBackground(
@@ -610,17 +633,41 @@ class MainActivity : ComponentActivity() {
                 mediaOnlyButton.isEnabled = true
                 switchButton.isEnabled = true
 
+                if (overlayFailed) {
+                    setControlsEnabled(false)
+                    setStatus("Watermark engine error • buka ulang aplikasi")
+                    return
+                }
+
                 if (event.hasError()) {
+                    val error = event.error
                     val uri = event.outputResults.outputUri
-                    if (uri != android.net.Uri.EMPTY) {
-                        runCatching { contentResolver.delete(uri, null, null) }
+
+                    if (isCorruptOutputError(error)) {
+                        if (uri != android.net.Uri.EMPTY) {
+                            runCatching { contentResolver.delete(uri, null, null) }
+                        }
+                        setStatus("Rekaman gagal • file korup dibersihkan")
+                        Toast.makeText(
+                            this,
+                            "Rekaman gagal: " + recordingErrorLabel(error),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        setStatus("VIDEO PARSIAL TERSIMPAN • " + recordingErrorLabel(error))
+                        Toast.makeText(
+                            this,
+                            "Bagian video yang masih valid tetap disimpan.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
-                    setStatus("Rekaman gagal • file rusak dibersihkan")
-                    Toast.makeText(
-                        this,
-                        "Rekaman gagal disimpan: error " + event.error,
-                        Toast.LENGTH_LONG
-                    ).show()
+
+                    if (needsRecorderRebuild(error)) {
+                        runCatching {
+                            buildCameraUseCases()
+                            bindCamera()
+                        }
+                    }
                 } else {
                     setStatus("VIDEO TERSIMPAN ✓ • watermark sudah tertanam")
                     Toast.makeText(
@@ -634,9 +681,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun takePhoto() {
-        if (!cameraReady || recording != null) return
+        if (!cameraReady || overlayFailed || recording != null) return
 
-        if (!hasEnoughFreeSpace()) {
+        if (availableStorageBytes() in 0 until STOP_FREE_BYTES) {
             Toast.makeText(this, "Storage hampir penuh.", Toast.LENGTH_LONG).show()
             return
         }
@@ -817,12 +864,41 @@ class MainActivity : ComponentActivity() {
         mediaOnlyButton.isEnabled = enabled
     }
 
-    private fun hasEnoughFreeSpace(): Boolean {
-        return runCatching {
-            val stat = android.os.StatFs(filesDir.absolutePath)
-            stat.availableBytes > MIN_FREE_BYTES
-        }.getOrDefault(true)
-    }
+    @Suppress("DEPRECATION")
+    private fun availableStorageBytes(): Long =
+        runCatching {
+            android.os.StatFs(
+                Environment.getExternalStorageDirectory().absolutePath
+            ).availableBytes
+        }.getOrDefault(-1L)
+
+    private fun isCorruptOutputError(error: Int): Boolean =
+        error == VideoRecordEvent.Finalize.ERROR_UNKNOWN ||
+            error == VideoRecordEvent.Finalize.ERROR_INVALID_OUTPUT_OPTIONS ||
+            error == VideoRecordEvent.Finalize.ERROR_ENCODING_FAILED ||
+            error == VideoRecordEvent.Finalize.ERROR_RECORDER_ERROR ||
+            error == VideoRecordEvent.Finalize.ERROR_NO_VALID_DATA ||
+            error == VideoRecordEvent.Finalize.ERROR_RECORDING_GARBAGE_COLLECTED
+
+    private fun needsRecorderRebuild(error: Int): Boolean =
+        error == VideoRecordEvent.Finalize.ERROR_UNKNOWN ||
+            error == VideoRecordEvent.Finalize.ERROR_ENCODING_FAILED ||
+            error == VideoRecordEvent.Finalize.ERROR_RECORDER_ERROR
+
+    private fun recordingErrorLabel(error: Int): String =
+        when (error) {
+            VideoRecordEvent.Finalize.ERROR_UNKNOWN -> "error tidak dikenal"
+            VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED -> "batas file sistem tercapai"
+            VideoRecordEvent.Finalize.ERROR_INSUFFICIENT_STORAGE -> "storage habis"
+            VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE -> "kamera berhenti mengirim frame"
+            VideoRecordEvent.Finalize.ERROR_INVALID_OUTPUT_OPTIONS -> "output tidak valid"
+            VideoRecordEvent.Finalize.ERROR_ENCODING_FAILED -> "encoder gagal"
+            VideoRecordEvent.Finalize.ERROR_RECORDER_ERROR -> "recorder error"
+            VideoRecordEvent.Finalize.ERROR_NO_VALID_DATA -> "tidak ada data video valid"
+            VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED -> "batas durasi sistem tercapai"
+            VideoRecordEvent.Finalize.ERROR_RECORDING_GARBAGE_COLLECTED -> "sesi recording terlepas"
+            else -> "kode error $error"
+        }
 
     private fun hasCameraPermission(): Boolean =
         ContextCompat.checkSelfPermission(
