@@ -34,6 +34,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraEffect
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalMirrorMode
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -61,6 +62,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
+@OptIn(ExperimentalMirrorMode::class)
 class MainActivity : ComponentActivity() {
 
     companion object {
