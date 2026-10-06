@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         if (hasCameraPermission()) {
-            startCamera()
+            previewView.post { startCamera() }
         } else {
             setStatus("Izin kamera wajib untuk menggunakan aplikasi")
             Toast.makeText(
@@ -206,7 +206,6 @@ class MainActivity : ComponentActivity() {
 
         previewView = PreviewView(this).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             setBackgroundColor(Color.BLACK)
         }
         root.addView(previewView, FrameLayout.LayoutParams(-1, -1))
@@ -570,17 +569,28 @@ class MainActivity : ComponentActivity() {
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         ).setContentValues(values).build()
 
-        var pending = videoUseCase.output.prepareRecording(this, outputOptions)
-        if (hasAudioPermission()) {
-            pending = pending.withAudioEnabled()
-        }
-
-        lowStorageStopRequested = false
-        recording = pending
-            .asPersistentRecording()
-            .start(ContextCompat.getMainExecutor(this)) { event ->
-                handleVideoEvent(event)
+        try {
+            var pending = videoUseCase.output.prepareRecording(this, outputOptions)
+            if (hasAudioPermission()) {
+                pending = pending.withAudioEnabled()
             }
+
+            lowStorageStopRequested = false
+            recording = pending
+                .asPersistentRecording()
+                .start(ContextCompat.getMainExecutor(this)) { event ->
+                    handleVideoEvent(event)
+                }
+        } catch (error: Throwable) {
+            recording = null
+            recordButton.isEnabled = true
+            setStatus("Gagal memulai rekaman")
+            Toast.makeText(
+                this,
+                error.message ?: "Recorder tidak dapat dimulai.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun handleVideoEvent(event: VideoRecordEvent) {
@@ -721,10 +731,11 @@ class MainActivity : ComponentActivity() {
         mediaOnlyButton.isEnabled = false
         setStatus("Mengambil foto...")
 
-        capture.takePicture(
-            options,
-            ContextCompat.getMainExecutor(this),
-            object : ImageCapture.OnImageSavedCallback {
+        try {
+            capture.takePicture(
+                options,
+                ContextCompat.getMainExecutor(this),
+                object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     photoCaptureInProgress = false
                     restoreIdleControls()
@@ -746,8 +757,17 @@ class MainActivity : ComponentActivity() {
                         Toast.LENGTH_LONG
                     ).show()
                 }
-            }
-        )
+            )
+        } catch (error: Throwable) {
+            photoCaptureInProgress = false
+            restoreIdleControls()
+            setStatus("Foto gagal")
+            Toast.makeText(
+                this,
+                error.message ?: "Kamera gagal mengambil foto.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun switchCamera() {
