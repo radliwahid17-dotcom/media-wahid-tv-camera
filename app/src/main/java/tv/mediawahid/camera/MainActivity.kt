@@ -62,7 +62,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-@OptIn(ExperimentalMirrorMode::class)
+@androidx.annotation.OptIn(markerClass = [ExperimentalMirrorMode::class])
 class MainActivity : ComponentActivity() {
 
     companion object {
@@ -637,7 +637,7 @@ class MainActivity : ComponentActivity() {
             if (!dualSelected) "✓ MEDIA ONLY" else "MEDIA ONLY"
     }
 
-    @OptIn(ExperimentalPersistentRecording::class)
+    @androidx.annotation.OptIn(markerClass = [ExperimentalPersistentRecording::class])
     @SuppressLint("MissingPermission")
     private fun startRecording() {
         val capture = videoCapture ?: return
