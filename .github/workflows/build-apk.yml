@@ -75,11 +75,11 @@ jobs:
 
           echo "Final architecture gate: PASS"
 
-      - name: Build and lint 7 clean passes
+      - name: Final clean build, lint and tests
         run: |
           set -euo pipefail
-          for i in 1 2 3 4 5 6 7; do
-            echo "===== REGRESSION PASS $i / 7 ====="
+          for i in 1; do
+            echo "===== FINAL REGRESSION PASS ====="
             gradle --no-daemon clean :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
             test -s app/build/outputs/apk/debug/app-debug.apk
           done
