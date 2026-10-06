@@ -125,6 +125,7 @@ class MainActivity : ComponentActivity() {
         recordingTemplate = selectedTemplate
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        forceMaxScreenBrightness()
         buildUi()
         applyTemplateUi()
         hideSystemBars()
@@ -166,6 +167,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        forceMaxScreenBrightness()
         hideSystemBars()
     }
 
@@ -1024,6 +1026,12 @@ class MainActivity : ComponentActivity() {
             setColor(fill)
             setStroke(dp(1), stroke)
         }
+
+    private fun forceMaxScreenBrightness() {
+        val params = window.attributes
+        params.screenBrightness = 1.0f
+        window.attributes = params
+    }
 
     private fun hideSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
