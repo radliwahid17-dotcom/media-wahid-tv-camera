@@ -2,7 +2,7 @@ name: Build MEDIA WAHID TV Camera Final
 
 on:
   push:
-    branches: [ main, final-v5-live-watermark ]
+    branches: [ main, final-v5-live-watermark, a16-split-video-photo-fix ]
   workflow_dispatch:
 
 jobs:
@@ -39,7 +39,10 @@ jobs:
           RENDERER=app/src/main/java/tv/mediawahid/camera/LiveWatermarkRenderer.kt
           GRADLE=app/build.gradle.kts
 
-          grep -q 'versionName = "5.0.4"' "$GRADLE"
+          grep -q 'versionName = "A16-SPLIT-1"' "$GRADLE"
+          grep -q 'applicationId = "tv.mediawahid.camera.a16split"' "$GRADLE"
+          grep -q 'private fun returnFromPhoto' "$MAIN"
+          grep -q 'if (photoCaptureInProgress)' "$MAIN"
           grep -q 'cameraX = "1.6.2"' "$GRADLE"
           grep -q 'Quality.FHD' "$MAIN"
           grep -q 'asPersistentRecording()' "$MAIN"
@@ -87,15 +90,15 @@ jobs:
           test -s "$APK"
           unzip -l "$APK" | grep -q 'media_wahid_logo_original'
           unzip -l "$APK" | grep -q 'masjid_raya_logo'
-          cp "$APK" MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.apk
-          sha256sum MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.apk > MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.sha256
+          cp "$APK" MEDIA-WAHID-TV-Camera-A16-SPLIT-1.apk
+          sha256sum MEDIA-WAHID-TV-Camera-A16-SPLIT-1.apk > MEDIA-WAHID-TV-Camera-A16-SPLIT-1.sha256
 
       - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
-          name: MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE
+          name: MEDIA-WAHID-TV-Camera-A16-SPLIT-1
           path: |
-            MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.apk
-            MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.sha256
+            MEDIA-WAHID-TV-Camera-A16-SPLIT-1.apk
+            MEDIA-WAHID-TV-Camera-A16-SPLIT-1.sha256
           if-no-files-found: error
           retention-days: 30
