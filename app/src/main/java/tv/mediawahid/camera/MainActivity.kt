@@ -68,8 +68,8 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_NAME = "media_wahid_camera"
         private const val KEY_TEMPLATE = "selected_template"
         private const val TARGET_VIDEO_BITRATE = 8_000_000
-        // 75% of the camera's supported positive exposure compensation range.
-        private const val BRIGHT_EXPOSURE_PERCENT = 0.75f
+        // Gentle exposure: 60% of camera-supported positive compensation range.
+        private const val BRIGHT_EXPOSURE_PERCENT = 0.60f
         private const val MIN_START_FREE_BYTES = 8L * 1024L * 1024L * 1024L
         private const val STOP_FREE_BYTES = 1L * 1024L * 1024L * 1024L
     }
@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
     private var lowStorageStopRequested = false
     private var overlayFailed = false
     private var photoCaptureInProgress = false
-    private var exposureInfo = "Exposure 75% diproses"
+    private var exposureInfo = "Exposure 60% diproses"
     private var fpsInfo = "FPS default"
 
     private val preferences by lazy {
@@ -559,7 +559,7 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Non-crashing CameraX-only brightness attempt.
-     * Wait until preview is ready, then request 75% of supported positive
+     * Wait until preview is ready, then request 60% of supported positive
      * camera exposure. Do not access Camera2 interop from this build.
      */
     private fun applyExposureAfterPreviewReady() {
@@ -593,7 +593,7 @@ class MainActivity : ComponentActivity() {
         val targetIndex = (range.upper * BRIGHT_EXPOSURE_PERCENT)
             .roundToInt().coerceIn(1, range.upper)
         val stepEv = state.exposureCompensationStep.toFloat()
-        exposureInfo = "Exposure 75% diproses"
+        exposureInfo = "Exposure 60% diproses"
         val request = camera.cameraControl.setExposureCompensationIndex(targetIndex)
         request.addListener({
             if (boundCamera !== camera) return@addListener
@@ -601,7 +601,7 @@ class MainActivity : ComponentActivity() {
                 request.get()
                 val appliedIndex = camera.cameraInfo.exposureState.exposureCompensationIndex
                 if (appliedIndex == targetIndex) {
-                    "Exposure +%.2f EV (75%%)".format(Locale.US, appliedIndex * stepEv)
+                    "Exposure +%.2f EV (60%%)".format(Locale.US, appliedIndex * stepEv)
                 } else {
                     "Exposure belum terkonfirmasi ($appliedIndex/$targetIndex)"
                 }
