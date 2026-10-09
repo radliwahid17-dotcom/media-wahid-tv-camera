@@ -567,7 +567,7 @@ class MainActivity : ComponentActivity() {
                 request.get()
                 val appliedIndex = camera.cameraInfo.exposureState.exposureCompensationIndex
                 if (appliedIndex == targetIndex) {
-                    "Exposure 75% (+%.2f EV)".format(Locale.US, appliedIndex * stepEv)
+                    "Exposure +%.2f EV (75%%)".format(Locale.US, appliedIndex * stepEv)
                 } else {
                     "Exposure belum terkonfirmasi ($appliedIndex/$targetIndex)"
                 }
