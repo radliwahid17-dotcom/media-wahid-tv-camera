@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "tv.mediawahid.camera.a16split"
+        applicationId = "tv.mediawahid.camera.a16fps"
         minSdk = 29
         targetSdk = 35
         versionCode = 1
-        versionName = "A16-SPLIT-1"
+        versionName = "A16-FPS-1"
     }
 
     compileOptions {
