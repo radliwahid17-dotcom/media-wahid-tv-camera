@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity() {
     private var lowStorageStopRequested = false
     private var overlayFailed = false
     private var photoCaptureInProgress = false
+    private var cameraSwitching = false
     private var exposureInfo = "Exposure 60% diproses"
     private var fpsInfo = "FPS default"
 
@@ -894,75 +895,157 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Switch lenses while preserving the FPS and exposure look of A16 SOFT.
+     * When idle, rebuild VideoCapture/Preview for the target lens since the
+     * selected low-light FPS range may differ for the front and rear cameras.
+     * When recording, preserve the SAME VideoCapture and persistent Recording;
+     * unbind/rebind it using CameraX's persistent-recording camera switch API.
+     */
     private fun switchCamera() {
         val provider = cameraProvider ?: return
-        if (!cameraReady || photoCaptureInProgress) return
+        if (!cameraReady || photoCaptureInProgress || cameraSwitching) return
 
-        val newFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+        val oldFacing = lensFacing
+        val newFacing = if (oldFacing == CameraSelector.LENS_FACING_BACK) {
             CameraSelector.LENS_FACING_FRONT
         } else {
             CameraSelector.LENS_FACING_BACK
         }
-
-        val selector = CameraSelector.Builder()
-            .requireLensFacing(newFacing)
-            .build()
-
-        val available = runCatching { provider.hasCamera(selector) }.getOrDefault(false)
-        if (!available) {
-            Toast.makeText(this, "Kamera tersebut tidak tersedia.", Toast.LENGTH_SHORT).show()
+        val selector = CameraSelector.Builder().requireLensFacing(newFacing).build()
+        if (!runCatching { provider.hasCamera(selector) }.getOrDefault(false)) {
+            Toast.makeText(this, "Kamera depan/belakang tidak tersedia", Toast.LENGTH_SHORT).show()
             return
         }
 
-        switchButton.isEnabled = false
-        lensFacing = newFacing
-        setStatus(
-            if (recording != null) {
-                "REC • mengganti kamera..."
-            } else {
-                "Mengganti kamera..."
-            }
-        )
+        val activeRecording = recording
+        cameraSwitching = true
+        cameraReady = false
+        setControlsEnabled(false)
+        setStatus(if (activeRecording != null) "REC • beralih kamera..." else "Mengganti kamera...")
 
-        runCatching { bindCamera() }
-            .onSuccess {
-                waitForPreviewReady(
-                    onReady = {
-                        switchButton.isEnabled = true
-                        setStatus(
-                            if (recording != null) {
-                                "REC • " + recordingTemplate.displayName
-                            } else {
-                                "Siap • " + selectedTemplate.displayName + " • " + exposureInfo
-                            }
-                        )
-                    },
-                    onTimeout = {
-                        switchButton.isEnabled = true
-                        if (recording != null) {
-                            setStatus("Preview gagal stabil • rekaman dihentikan aman")
-                            recording?.stop()
+        // Persistent recording survives a camera rebind. Pause to avoid
+        // including blank transition frames and resume once preview is ready.
+        if (activeRecording != null) {
+            val pauseWorked = runCatching { activeRecording.pause() }.isSuccess
+            if (!pauseWorked) {
+                cameraSwitching = false
+                cameraReady = true
+                restoreSwitchControls()
+                setStatus("REC • kamera belum bisa dijeda, rekaman dilanjutkan")
+                return
+            }
+        }
+
+        lensFacing = newFacing
+        try {
+            provider.unbindAll()
+            if (activeRecording == null) {
+                // Critical A16 fix: recreate FPS-targeted preview AND recorder
+                // for the front camera's own supported FPS list.
+                buildCameraUseCases()
+            }
+            bindCamera()
+        } catch (error: Throwable) {
+            rollbackCameraSwitch(oldFacing, activeRecording, error.javaClass.simpleName)
+            return
+        }
+
+        previewView.postDelayed({
+            waitForPreviewReady(
+                onReady = {
+                    cameraSwitching = false
+                    val resumed = if (activeRecording != null && recording === activeRecording) {
+                        runCatching { activeRecording.resume() }.isSuccess
+                    } else true
+                    if (!resumed) {
+                        setStatus("REC • tidak bisa lanjut, menyimpan video...")
+                        recordButton.isEnabled = false
+                        runCatching { activeRecording?.stop() }
+                    } else {
+                        restoreSwitchControls()
+                        if (recording == null) {
+                            setStatus("Siap • " + selectedTemplate.displayName + " • " + fpsInfo)
+                            applyExposureAfterPreviewReady()
                         } else {
-                            setStatus("Preview gagal stabil")
+                            setStatus("REC • kamera " +
+                                if (lensFacing == CameraSelector.LENS_FACING_FRONT) "depan" else "belakang")
                         }
                     }
-                )
-            }
-            .onFailure { error ->
-                lensFacing = if (newFacing == CameraSelector.LENS_FACING_BACK) {
-                    CameraSelector.LENS_FACING_FRONT
-                } else {
-                    CameraSelector.LENS_FACING_BACK
+                },
+                onTimeout = {
+                    rollbackCameraSwitch(oldFacing, activeRecording, "preview timeout")
                 }
-                runCatching { bindCamera() }
-                switchButton.isEnabled = true
-                setStatus("Gagal mengganti kamera")
-                Toast.makeText(
-                    this,
-                    error.message ?: "Gagal mengganti kamera.",
-                    Toast.LENGTH_LONG
-                ).show()
+            )
+        }, 350L)
+    }
+
+    private fun rollbackCameraSwitch(
+        oldFacing: Int,
+        activeRecording: Recording?,
+        reason: String,
+    ) {
+        val provider = cameraProvider
+        lensFacing = oldFacing
+        cameraReady = false
+        if (provider == null) {
+            cameraSwitching = false
+            setStatus("Gagal beralih kamera: " + reason)
+            return
+        }
+        try {
+            provider.unbindAll()
+            if (activeRecording == null) buildCameraUseCases()
+            bindCamera()
+            previewView.postDelayed({
+                waitForPreviewReady(
+                    onReady = {
+                        cameraSwitching = false
+                        if (activeRecording != null && recording === activeRecording) {
+                            runCatching { activeRecording.resume() }
+                        } else {
+                            applyExposureAfterPreviewReady()
+                        }
+                        restoreSwitchControls()
+                        setStatus("Kamera dikembalikan • pindah gagal: " + reason)
+                    },
+                    onTimeout = {
+                        cameraSwitching = false
+                        setControlsEnabled(false)
+                        // Stop the persistent recording gracefully if the
+                        // original lens cannot be recovered, to save video.
+                        if (activeRecording != null && recording === activeRecording) {
+                            recordButton.isEnabled = false
+                            runCatching { activeRecording.stop() }
+                        }
+                        setStatus("Kamera tidak pulih • buka ulang aplikasi")
+                    }
+                )
+            }, 350L)
+        } catch (error: Throwable) {
+            cameraSwitching = false
+            setControlsEnabled(false)
+            if (activeRecording != null && recording === activeRecording) {
+                runCatching { activeRecording.stop() }
             }
+            setStatus("Gagal kembali ke kamera: " + error.javaClass.simpleName)
+        }
+    }
+
+    private fun restoreSwitchControls() {
+        if (overlayFailed) {
+            setControlsEnabled(false)
+            return
+        }
+        if (recording != null) {
+            recordButton.isEnabled = true
+            switchButton.isEnabled = true
+            photoButton.isEnabled = false
+            dualButton.isEnabled = false
+            mediaOnlyButton.isEnabled = false
+        } else {
+            setControlsEnabled(true)
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
