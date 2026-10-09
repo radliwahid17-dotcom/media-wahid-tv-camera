@@ -14,6 +14,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Range
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -100,6 +101,7 @@ class MainActivity : ComponentActivity() {
     private var overlayFailed = false
     private var photoCaptureInProgress = false
     private var exposureInfo = "Exposure 75% diproses"
+    private var fpsInfo = "FPS default"
 
     private val preferences by lazy {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -416,7 +418,7 @@ class MainActivity : ComponentActivity() {
                 waitForPreviewReady(
                     onReady = {
                         setControlsEnabled(true)
-                        setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+                        setStatus("Siap • " + selectedTemplate.displayName + " • " + fpsInfo)
                         applyExposureAfterPreviewReady()
                     },
                     onTimeout = {
@@ -437,13 +439,39 @@ class MainActivity : ComponentActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    /**
+     * Pick only a frame-rate range explicitly reported by the selected camera.
+     * Variable FPS gives auto-exposure more frame time in dim light.
+     * If unsupported, keep the previous default, rather than force an invalid value.
+     */
+    private fun selectSupportedLowLightFps(): Range<Int>? {
+        val provider = cameraProvider ?: return null
+        return try {
+            val selector = CameraSelector.Builder()
+                .requireLensFacing(lensFacing)
+                .build()
+            val cameraInfo = selector.filter(provider.availableCameraInfos).firstOrNull()
+            val ranges = cameraInfo?.supportedFrameRateRanges ?: return null
+            ranges.filter { range ->
+                range.lower in 8..20 && range.upper in 24..30 &&
+                    range.lower < range.upper
+            }.sortedWith(compareBy<Range<Int>> { it.lower }.thenByDescending { it.upper })
+                .firstOrNull()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun buildCameraUseCases() {
         val rotation = previewView.display?.rotation ?: windowManager.defaultDisplay.rotation
 
-        preview = Preview.Builder()
-            .setTargetRotation(rotation)
-            .build()
+        val lowLightFps = selectSupportedLowLightFps()
+        fpsInfo = lowLightFps?.let { "FPS target ${it.lower}-${it.upper}" }
+            ?: "FPS default (tanpa rentang fleksibel)"
+        val previewBuilder = Preview.Builder().setTargetRotation(rotation)
+        if (lowLightFps != null) previewBuilder.setTargetFrameRate(lowLightFps)
+        preview = previewBuilder.build()
             .also {
                 it.surfaceProvider = previewView.surfaceProvider
             }
@@ -463,9 +491,10 @@ class MainActivity : ComponentActivity() {
             .setTargetVideoEncodingBitRate(TARGET_VIDEO_BITRATE)
             .build()
 
-        videoCapture = VideoCapture.withOutput(recorder).also {
-            it.targetRotation = rotation
-        }
+        val videoBuilder = VideoCapture.Builder(recorder)
+            .setTargetRotation(rotation)
+        if (lowLightFps != null) videoBuilder.setTargetFrameRate(lowLightFps)
+        videoCapture = videoBuilder.build()
 
         watermarkRenderer?.close()
         watermarkRenderer = LiveWatermarkRenderer(this, previewView).apply {
@@ -543,7 +572,7 @@ class MainActivity : ComponentActivity() {
                 } catch (error: Exception) {
                     exposureInfo = "Exposure: " + error.javaClass.simpleName
                     if (recording == null) {
-                        setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+                        setStatus("Siap • " + selectedTemplate.displayName + " • " + fpsInfo + " • " + exposureInfo)
                     }
                 }
             }
@@ -556,7 +585,7 @@ class MainActivity : ComponentActivity() {
         if (!state.isExposureCompensationSupported || range.upper <= 0) {
             exposureInfo = "Exposure positif tidak didukung"
             if (recording == null) {
-                setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+                setStatus("Siap • " + selectedTemplate.displayName + " • " + fpsInfo + " • " + exposureInfo)
             }
             return
         }
@@ -581,7 +610,7 @@ class MainActivity : ComponentActivity() {
                 "Exposure gagal: " + cause.javaClass.simpleName
             }
             if (cameraReady && !overlayFailed && recording == null && !photoCaptureInProgress) {
-                setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+                setStatus("Siap • " + selectedTemplate.displayName + " • " + fpsInfo + " • " + exposureInfo)
             }
         }, ContextCompat.getMainExecutor(this))
     }
