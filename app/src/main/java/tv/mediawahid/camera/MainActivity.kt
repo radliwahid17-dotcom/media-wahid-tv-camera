@@ -31,6 +31,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.CaptureRequestOptions
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraEffect.IMAGE_CAPTURE
 import androidx.camera.core.CameraEffect.PREVIEW
@@ -587,6 +588,7 @@ class MainActivity : ComponentActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun retryOrFallbackExposure(
         camera: Camera,
         index: Int,
