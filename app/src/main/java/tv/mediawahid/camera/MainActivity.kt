@@ -405,7 +405,7 @@ class MainActivity : ComponentActivity() {
     private fun startCamera() {
         cameraReady = false
         setControlsEnabled(false)
-        setStatus("Menyiapkan kamera FHD...")
+        setStatus("A16 • memulai video + preview (tanpa mesin foto)")
 
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
@@ -512,11 +512,16 @@ class MainActivity : ComponentActivity() {
 
         provider.unbindAll()
 
+        // Samsung A16 5G: isolate photo and video pipelines. Three simultaneous
+        // use cases were dark in on-device diagnostics even without watermark.
         val groupBuilder = UseCaseGroup.Builder()
             .addUseCase(previewUseCase)
-            .addUseCase(photoUseCase)
-            .addUseCase(videoUseCase)
             .addEffect(effect)
+        if (photoCaptureInProgress) {
+            groupBuilder.addUseCase(photoUseCase)
+        } else {
+            groupBuilder.addUseCase(videoUseCase)
+        }
 
         previewView.viewPort?.let { groupBuilder.setViewPort(it) }
 
@@ -766,7 +771,6 @@ class MainActivity : ComponentActivity() {
 
         val capture = imageCapture ?: return
         watermarkRenderer?.template = selectedTemplate
-
         val values = ContentValues().apply {
             put(
                 MediaStore.Images.Media.DISPLAY_NAME,
@@ -778,7 +782,6 @@ class MainActivity : ComponentActivity() {
                 Environment.DIRECTORY_PICTURES + "/MEDIA WAHID TV"
             )
         }
-
         val options = ImageCapture.OutputFileOptions.Builder(
             contentResolver,
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -786,50 +789,79 @@ class MainActivity : ComponentActivity() {
         ).build()
 
         photoCaptureInProgress = true
-        recordButton.isEnabled = false
-        photoButton.isEnabled = false
-        switchButton.isEnabled = false
-        dualButton.isEnabled = false
-        mediaOnlyButton.isEnabled = false
-        setStatus("Mengambil foto...")
-
+        cameraReady = false
+        setControlsEnabled(false)
+        setStatus("Menyiapkan kamera foto A16...")
         try {
-            capture.takePicture(
-                options,
-                ContextCompat.getMainExecutor(this),
-                object : ImageCapture.OnImageSavedCallback {
-                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                        photoCaptureInProgress = false
-                        restoreIdleControls()
-                        setStatus("FOTO TERSIMPAN ✓ • watermark sudah tertanam")
-                        Toast.makeText(
-                            this@MainActivity,
-                            "FOTO TERSIMPAN ✓",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+            bindCamera() // Preview + ImageCapture; video encoder unbound.
+        } catch (error: Exception) {
+            returnFromPhoto("Foto tidak dapat dibuka: " + error.javaClass.simpleName)
+            return
+        }
 
-                    override fun onError(exception: ImageCaptureException) {
-                        photoCaptureInProgress = false
-                        restoreIdleControls()
-                        setStatus("Foto gagal")
-                        Toast.makeText(
-                            this@MainActivity,
-                            exception.message ?: "Foto gagal.",
-                            Toast.LENGTH_LONG
-                        ).show()
+        waitForPreviewReady(
+            onReady = {
+                // Give the new capture session time to receive its first frame.
+                previewView.postDelayed({
+                    if (!photoCaptureInProgress || overlayFailed || isFinishing) return@postDelayed
+                    try {
+                        capture.takePicture(
+                            options,
+                            ContextCompat.getMainExecutor(this),
+                            object : ImageCapture.OnImageSavedCallback {
+                                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                                    returnFromPhoto("FOTO TERSIMPAN ✓ • watermark")
+                                    Toast.makeText(
+                                        this@MainActivity, "FOTO TERSIMPAN ✓",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+
+                                override fun onError(exception: ImageCaptureException) {
+                                    returnFromPhoto("Foto gagal: " + exception.javaClass.simpleName)
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        exception.message ?: "Foto gagal",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        )
+                    } catch (error: Exception) {
+                        returnFromPhoto("Foto gagal: " + error.javaClass.simpleName)
                     }
+                }, 350L)
+            },
+            onTimeout = {
+                returnFromPhoto("Kamera foto belum siap")
+            }
+        )
+    }
+
+    private fun returnFromPhoto(message: String) {
+        // Never leave the UI in photo-only mode after a completed or failed shot.
+        photoCaptureInProgress = false
+        cameraReady = false
+        setControlsEnabled(false)
+        setStatus("Mengembalikan kamera video...")
+        try {
+            bindCamera() // Restore Preview + VideoCapture.
+            waitForPreviewReady(
+                onReady = {
+                    setControlsEnabled(true)
+                    setStatus(message)
+                    applyExposureAfterPreviewReady()
+                },
+                onTimeout = {
+                    cameraReady = false
+                    setControlsEnabled(false)
+                    setStatus("Kamera video belum siap • buka ulang aplikasi")
                 }
             )
-        } catch (error: Throwable) {
-            photoCaptureInProgress = false
-            restoreIdleControls()
-            setStatus("Foto gagal")
-            Toast.makeText(
-                this,
-                error.message ?: "Kamera gagal mengambil foto.",
-                Toast.LENGTH_LONG
-            ).show()
+        } catch (error: Exception) {
+            cameraReady = false
+            setControlsEnabled(false)
+            setStatus("Gagal kembali ke video: " + error.javaClass.simpleName)
         }
     }
 
