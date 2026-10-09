@@ -39,7 +39,7 @@ jobs:
           RENDERER=app/src/main/java/tv/mediawahid/camera/LiveWatermarkRenderer.kt
           GRADLE=app/build.gradle.kts
 
-          grep -q 'versionName = "5.0.3"' "$GRADLE"
+          grep -q 'versionName = "5.0.4"' "$GRADLE"
           grep -q 'cameraX = "1.6.2"' "$GRADLE"
           grep -q 'Quality.FHD' "$MAIN"
           grep -q 'asPersistentRecording()' "$MAIN"
@@ -87,15 +87,15 @@ jobs:
           test -s "$APK"
           unzip -l "$APK" | grep -q 'media_wahid_logo_original'
           unzip -l "$APK" | grep -q 'masjid_raya_logo'
-          cp "$APK" MEDIA-WAHID-TV-Camera-v5.0.3-CAMERA2-EXPOSURE-FIX.apk
-          sha256sum MEDIA-WAHID-TV-Camera-v5.0.3-CAMERA2-EXPOSURE-FIX.apk > MEDIA-WAHID-TV-Camera-v5.0.3-CAMERA2-EXPOSURE-FIX.sha256
+          cp "$APK" MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.apk
+          sha256sum MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.apk > MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.sha256
 
       - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
-          name: MEDIA-WAHID-TV-Camera-v5.0.3-CAMERA2-EXPOSURE-FIX
+          name: MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE
           path: |
-            MEDIA-WAHID-TV-Camera-v5.0.3-CAMERA2-EXPOSURE-FIX.apk
-            MEDIA-WAHID-TV-Camera-v5.0.3-CAMERA2-EXPOSURE-FIX.sha256
+            MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.apk
+            MEDIA-WAHID-TV-Camera-v5.0.4-SAFE-EXPOSURE.sha256
           if-no-files-found: error
           retention-days: 30
