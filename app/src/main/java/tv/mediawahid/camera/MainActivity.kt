@@ -9,7 +9,6 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.hardware.camera2.CaptureRequest
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
@@ -29,9 +28,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
-import androidx.camera.camera2.interop.Camera2CameraControl
-import androidx.camera.camera2.interop.CaptureRequestOptions
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraEffect.IMAGE_CAPTURE
 import androidx.camera.core.CameraEffect.PREVIEW
@@ -60,7 +56,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import java.text.SimpleDateFormat
 import java.util.Locale
-import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
@@ -104,8 +99,7 @@ class MainActivity : ComponentActivity() {
     private var lowStorageStopRequested = false
     private var overlayFailed = false
     private var photoCaptureInProgress = false
-    private var exposureInfo = "Exposure 75% menunggu kamera"
-    private var exposureRequestedCamera: Camera? = null
+    private var exposureInfo = "Exposure 75% diproses"
 
     private val preferences by lazy {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -137,17 +131,6 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         forceMaxScreenBrightness()
         buildUi()
-        // Wait for actual camera frames; configuring exposure during initial binding
-        // can be rejected while the capture session is still being created.
-        previewView.previewStreamState.observe(this) { streamState ->
-            if (streamState == PreviewView.StreamState.STREAMING) {
-                val camera = boundCamera
-                if (camera != null && exposureRequestedCamera !== camera) {
-                    exposureRequestedCamera = camera
-                    applyBrightCameraExposure(camera)
-                }
-            }
-        }
         applyTemplateUi()
         hideSystemBars()
 
@@ -434,6 +417,7 @@ class MainActivity : ComponentActivity() {
                     onReady = {
                         setControlsEnabled(true)
                         setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+                        applyExposureAfterPreviewReady()
                     },
                     onTimeout = {
                         setControlsEnabled(false)
@@ -537,117 +521,64 @@ class MainActivity : ComponentActivity() {
         previewView.viewPort?.let { groupBuilder.setViewPort(it) }
 
         boundCamera = provider.bindToLifecycle(this, selector, groupBuilder.build())
-        exposureRequestedCamera = null
-        exposureInfo = "Exposure 75% menunggu preview"
     }
 
     /**
-     * Try CameraX compensation after video preview is STREAMING (not merely bound).
-     * Retry transient camera cancellations, then use Camera2 capture request fallback.
-     * Keep the UI honest: a successful async camera request is not a measured
-     * guarantee that this device produces a brighter image.
+     * Non-crashing CameraX-only brightness attempt.
+     * Wait until preview is ready, then request 75% of supported positive
+     * camera exposure. Do not access Camera2 interop from this build.
      */
-    private fun applyBrightCameraExposure(camera: Camera, attempt: Int = 1) {
-        if (boundCamera !== camera) return
-        val state = camera.cameraInfo.exposureState
-        val maxIndex = state.exposureCompensationRange.upper
-        if (!state.isExposureCompensationSupported || maxIndex <= 0) {
-            exposureInfo = "Exposure positif tidak didukung"
-            showExposureStatus(camera)
-            return
-        }
-        val index = (maxIndex * BRIGHT_EXPOSURE_PERCENT).roundToInt()
-            .coerceIn(1, maxIndex)
-        val ev = index * state.exposureCompensationStep.toFloat()
-        exposureInfo = "Exposure 75% diproses"
-        showExposureStatus(camera)
-
-        val request = try {
-            camera.cameraControl.setExposureCompensationIndex(index)
-        } catch (error: Exception) {
-            retryOrFallbackExposure(camera, index, ev, attempt, error)
-            return
-        }
-
-        request.addListener({
-            if (boundCamera !== camera) return@addListener
-            try {
-                request.get()
-                exposureInfo = "Exposure 75% (+%.2f EV)".format(Locale.US, ev)
-                showExposureStatus(camera)
-            } catch (error: Exception) {
-                // A canceled future does not prove a failed setting. Confirm actual
-                // requested index before retrying instead of blindly retrying.
-                if (state.exposureCompensationIndex == index) {
-                    exposureInfo = "Exposure 75% (+%.2f EV)".format(Locale.US, ev)
-                    showExposureStatus(camera)
-                } else {
-                    retryOrFallbackExposure(camera, index, ev, attempt, error)
+    private fun applyExposureAfterPreviewReady() {
+        val camera = boundCamera ?: return
+        val current = camera
+        previewView.postDelayed({
+            if (boundCamera === current && cameraReady && !overlayFailed) {
+                try {
+                    applyBrightCameraExposure(current)
+                } catch (error: Exception) {
+                    exposureInfo = "Exposure: " + error.javaClass.simpleName
+                    if (recording == null) {
+                        setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+                    }
                 }
             }
-        }, ContextCompat.getMainExecutor(this))
+        }, 450L)
     }
 
-    @OptIn(ExperimentalCamera2Interop::class)
-    private fun retryOrFallbackExposure(
-        camera: Camera,
-        index: Int,
-        ev: Float,
-        attempt: Int,
-        error: Exception,
-    ) {
-        if (boundCamera !== camera) return
-        if (attempt < 2) {
-            previewView.postDelayed({
-                if (boundCamera === camera) applyBrightCameraExposure(camera, attempt + 1)
-            }, 600L)
+    private fun applyBrightCameraExposure(camera: Camera) {
+        val state = camera.cameraInfo.exposureState
+        val range = state.exposureCompensationRange
+        if (!state.isExposureCompensationSupported || range.upper <= 0) {
+            exposureInfo = "Exposure positif tidak didukung"
+            if (recording == null) {
+                setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+            }
             return
         }
-        // Use the camera2 capture request as an alternate path after CameraX fails.
-        // Keep AE enabled; do not force fixed ISO or shutter that could destabilize
-        // long recordings in changing lighting.
-        val options = CaptureRequestOptions.Builder()
-            .setCaptureRequestOption(
-                CaptureRequest.CONTROL_AE_MODE,
-                CaptureRequest.CONTROL_AE_MODE_ON
-            )
-            .setCaptureRequestOption(
-                CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
-                index
-            )
-            .build()
-        val fallback = try {
-            Camera2CameraControl.from(camera.cameraControl).addCaptureRequestOptions(options)
-        } catch (fallbackError: Exception) {
-            exposureInfo = "Gagal exposure: " + cameraErrorLabel(fallbackError)
-            showExposureStatus(camera)
-            return
-        }
-        fallback.addListener({
+
+        val targetIndex = (range.upper * BRIGHT_EXPOSURE_PERCENT)
+            .roundToInt().coerceIn(1, range.upper)
+        val stepEv = state.exposureCompensationStep.toFloat()
+        exposureInfo = "Exposure 75% diproses"
+        val request = camera.cameraControl.setExposureCompensationIndex(targetIndex)
+        request.addListener({
             if (boundCamera !== camera) return@addListener
             exposureInfo = try {
-                fallback.get()
-                "Exposure 75% Camera2 (+%.2f EV)".format(Locale.US, ev)
-            } catch (fallbackError: Exception) {
-                "Exposure gagal: " + cameraErrorLabel(fallbackError) +
-                    " / " + cameraErrorLabel(error)
+                request.get()
+                val appliedIndex = camera.cameraInfo.exposureState.exposureCompensationIndex
+                if (appliedIndex == targetIndex) {
+                    "Exposure 75% (+%.2f EV)".format(Locale.US, appliedIndex * stepEv)
+                } else {
+                    "Exposure belum terkonfirmasi ($appliedIndex/$targetIndex)"
+                }
+            } catch (error: Exception) {
+                val cause = (error as? java.util.concurrent.ExecutionException)?.cause ?: error
+                "Exposure gagal: " + cause.javaClass.simpleName
             }
-            showExposureStatus(camera)
+            if (cameraReady && !overlayFailed && recording == null && !photoCaptureInProgress) {
+                setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+            }
         }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun cameraErrorLabel(error: Exception): String {
-        val cause = (error as? ExecutionException)?.cause ?: error
-        return cause.javaClass.simpleName.take(30) +
-            (cause.message?.take(40)?.let { ": " + it } ?: "")
-    }
-
-    private fun showExposureStatus(camera: Camera) {
-        if (boundCamera === camera && cameraReady && !overlayFailed &&
-            recording == null && !photoCaptureInProgress
-        ) {
-            setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
-        }
     }
 
     @OptIn(ExperimentalPersistentRecording::class)
@@ -941,7 +872,7 @@ class MainActivity : ComponentActivity() {
                             if (recording != null) {
                                 "REC • " + recordingTemplate.displayName
                             } else {
-                                "Siap • " + selectedTemplate.displayName
+                                "Siap • " + selectedTemplate.displayName + " • " + exposureInfo
                             }
                         )
                     },
