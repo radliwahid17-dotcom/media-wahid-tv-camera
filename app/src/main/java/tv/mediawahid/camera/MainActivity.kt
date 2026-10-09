@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var timerText: TextView
     private lateinit var dualButton: TextView
     private lateinit var mediaOnlyButton: TextView
+    private lateinit var diagnosticButton: TextView
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var boundCamera: Camera? = null
@@ -99,6 +100,7 @@ class MainActivity : ComponentActivity() {
     private var lowStorageStopRequested = false
     private var overlayFailed = false
     private var photoCaptureInProgress = false
+    private var diagnosticPreview = false
     private var exposureInfo = "Exposure 75% diproses"
 
     private val preferences by lazy {
@@ -139,6 +141,7 @@ class MainActivity : ComponentActivity() {
         switchButton.setOnClickListener { switchCamera() }
         dualButton.setOnClickListener { selectTemplate(WatermarkTemplate.DUAL) }
         mediaOnlyButton.setOnClickListener { selectTemplate(WatermarkTemplate.MEDIA_ONLY) }
+        diagnosticButton.setOnClickListener { toggleDiagnosticPreview() }
 
         configurePreviewGestures()
 
@@ -317,6 +320,12 @@ class MainActivity : ComponentActivity() {
 
         bottomPanel.addView(controls, LinearLayout.LayoutParams(-1, -2))
 
+        diagnosticButton = controlButton("TEST CAHAYA (TANPA EFEK)", Color.rgb(35, 83, 96))
+        diagnosticButton.isEnabled = false
+        bottomPanel.addView(diagnosticButton, LinearLayout.LayoutParams(-1, dp(42)).apply {
+            topMargin = dp(8)
+        })
+
         bottomPanel.addView(TextView(this).apply {
             text = "FHD • watermark langsung tertanam • tanpa render setelah rekam"
             setTextColor(Color.rgb(166, 176, 189))
@@ -400,6 +409,53 @@ class MainActivity : ComponentActivity() {
         )
         dualButton.text = if (dual) "✓ MASJID + MEDIA" else "MASJID + MEDIA"
         mediaOnlyButton.text = if (!dual) "✓ MEDIA ONLY" else "MEDIA ONLY"
+    }
+
+    /**
+     * A16 5G diagnostic: compare original CameraX preview with the full
+     * watermark/recording processing pipeline. In TEST mode there is only a
+     * Preview use case: no overlay, no exposure override, no photo/recording.
+     * Does not mutate the original final camera build on the main branch.
+     */
+    private fun toggleDiagnosticPreview() {
+        if (recording != null || photoCaptureInProgress) {
+            Toast.makeText(this, "Hentikan rekaman dahulu.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val provider = cameraProvider ?: return
+        diagnosticPreview = !diagnosticPreview
+        diagnosticButton.text = if (diagnosticPreview) {
+            "KEMBALI KE MODE NORMAL"
+        } else {
+            "TEST CAHAYA (TANPA EFEK)"
+        }
+        cameraReady = false
+        overlayFailed = false
+        setControlsEnabled(false)
+        try {
+            provider.unbindAll()
+            buildCameraUseCases()
+            bindCamera()
+            waitForPreviewReady(
+                onReady = {
+                    setControlsEnabled(true)
+                    if (diagnosticPreview) {
+                        setStatus("TEST RAW A16 • hanya kamera, tanpa efek / exposure")
+                    } else {
+                        setStatus("NORMAL • " + selectedTemplate.displayName + " • " + exposureInfo)
+                        applyExposureAfterPreviewReady()
+                    }
+                },
+                onTimeout = {
+                    setControlsEnabled(false)
+                    setStatus("Preview gagal siap • coba buka ulang")
+                }
+            )
+        } catch (error: Exception) {
+            cameraReady = false
+            setControlsEnabled(false)
+            setStatus("Tes gagal: " + error.javaClass.simpleName)
+        }
     }
 
     private fun startCamera() {
@@ -511,6 +567,13 @@ class MainActivity : ComponentActivity() {
             .build()
 
         provider.unbindAll()
+
+        if (diagnosticPreview) {
+            // Crucial isolation: no OverlayEffect, VideoCapture, or ImageCapture
+            // in the raw camera preview pipeline.
+            boundCamera = provider.bindToLifecycle(this, selector, previewUseCase)
+            return
+        }
 
         val groupBuilder = UseCaseGroup.Builder()
             .addUseCase(previewUseCase)
@@ -1009,11 +1072,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setControlsEnabled(enabled: Boolean) {
-        recordButton.isEnabled = enabled
-        photoButton.isEnabled = enabled
-        switchButton.isEnabled = enabled
-        dualButton.isEnabled = enabled
-        mediaOnlyButton.isEnabled = enabled
+        val captureEnabled = enabled && !diagnosticPreview
+        recordButton.isEnabled = captureEnabled
+        photoButton.isEnabled = captureEnabled
+        switchButton.isEnabled = captureEnabled
+        dualButton.isEnabled = captureEnabled
+        mediaOnlyButton.isEnabled = captureEnabled
+        if (::diagnosticButton.isInitialized) diagnosticButton.isEnabled = enabled
     }
 
     @Suppress("DEPRECATION")
