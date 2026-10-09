@@ -59,6 +59,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
 
@@ -66,6 +67,8 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_NAME = "media_wahid_camera"
         private const val KEY_TEMPLATE = "selected_template"
         private const val TARGET_VIDEO_BITRATE = 8_000_000
+        // Brighter camera output (preview, photos and video), not display brightness.
+        private const val BRIGHT_EXPOSURE_EV = 2.0f
         private const val MIN_START_FREE_BYTES = 8L * 1024L * 1024L * 1024L
         private const val STOP_FREE_BYTES = 1L * 1024L * 1024L * 1024L
     }
@@ -516,6 +519,23 @@ class MainActivity : ComponentActivity() {
         previewView.viewPort?.let { groupBuilder.setViewPort(it) }
 
         boundCamera = provider.bindToLifecycle(this, selector, groupBuilder.build())
+        boundCamera?.let(::applyBrightCameraExposure)
+    }
+
+    /** Applies +2 EV camera exposure compensation, limited to hardware-supported range.
+     *  Applied whenever the camera is rebound (including front/back switch).
+     *  Unlike screen brightness, this affects the captured image itself.
+     */
+    private fun applyBrightCameraExposure(camera: Camera) {
+        val exposure = camera.cameraInfo.exposureState
+        if (!exposure.isExposureCompensationSupported) return
+        val step = exposure.exposureCompensationStep.toFloat()
+        if (step <= 0f) return
+
+        val range = exposure.exposureCompensationRange
+        val targetIndex = (BRIGHT_EXPOSURE_EV / step).roundToInt()
+            .coerceIn(range.lower, range.upper)
+        camera.cameraControl.setExposureCompensationIndex(targetIndex)
     }
 
     @OptIn(ExperimentalPersistentRecording::class)
