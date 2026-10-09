@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "tv.mediawahid.camera.a16soft"
+        applicationId = "tv.mediawahid.camera.a16flip"
         minSdk = 29
         targetSdk = 35
         versionCode = 1
-        versionName = "A16-FPS-60-1"
+        versionName = "A16-FLIP-1"
     }
 
     compileOptions {
