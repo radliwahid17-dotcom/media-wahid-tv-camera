@@ -67,8 +67,8 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_NAME = "media_wahid_camera"
         private const val KEY_TEMPLATE = "selected_template"
         private const val TARGET_VIDEO_BITRATE = 8_000_000
-        // Brighter camera output (preview, photos and video), not display brightness.
-        private const val BRIGHT_EXPOSURE_EV = 2.0f
+        // 75% of the camera's supported positive exposure compensation range.
+        private const val BRIGHT_EXPOSURE_PERCENT = 0.75f
         private const val MIN_START_FREE_BYTES = 8L * 1024L * 1024L * 1024L
         private const val STOP_FREE_BYTES = 1L * 1024L * 1024L * 1024L
     }
@@ -99,6 +99,7 @@ class MainActivity : ComponentActivity() {
     private var lowStorageStopRequested = false
     private var overlayFailed = false
     private var photoCaptureInProgress = false
+    private var exposureInfo = "Exposure 75% diproses"
 
     private val preferences by lazy {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -415,7 +416,7 @@ class MainActivity : ComponentActivity() {
                 waitForPreviewReady(
                     onReady = {
                         setControlsEnabled(true)
-                        setStatus("Siap • " + selectedTemplate.displayName)
+                        setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
                     },
                     onTimeout = {
                         setControlsEnabled(false)
@@ -522,20 +523,39 @@ class MainActivity : ComponentActivity() {
         boundCamera?.let(::applyBrightCameraExposure)
     }
 
-    /** Applies +2 EV camera exposure compensation, limited to hardware-supported range.
-     *  Applied whenever the camera is rebound (including front/back switch).
-     *  Unlike screen brightness, this affects the captured image itself.
+    /**
+     * Select 75% of the device-supported positive exposure compensation range.
+     * This adjusts camera capture (preview, photo and video), not screen brightness.
+     * Confirm the asynchronous camera request and expose its real state in the UI.
      */
     private fun applyBrightCameraExposure(camera: Camera) {
-        val exposure = camera.cameraInfo.exposureState
-        if (!exposure.isExposureCompensationSupported) return
-        val step = exposure.exposureCompensationStep.toFloat()
-        if (step <= 0f) return
+        val state = camera.cameraInfo.exposureState
+        val maxPositiveIndex = state.exposureCompensationRange.upper
+        if (!state.isExposureCompensationSupported || maxPositiveIndex <= 0) {
+            exposureInfo = "Exposure tidak didukung HP"
+            return
+        }
 
-        val range = exposure.exposureCompensationRange
-        val targetIndex = (BRIGHT_EXPOSURE_EV / step).roundToInt()
-            .coerceIn(range.lower, range.upper)
-        camera.cameraControl.setExposureCompensationIndex(targetIndex)
+        val targetIndex = (maxPositiveIndex * BRIGHT_EXPOSURE_PERCENT)
+            .roundToInt()
+            .coerceIn(1, maxPositiveIndex)
+        exposureInfo = "Exposure 75% diproses"
+        val request = camera.cameraControl.setExposureCompensationIndex(targetIndex)
+        request.addListener({
+            if (boundCamera !== camera) return@addListener
+            exposureInfo = try {
+                request.get()
+                val actual = camera.cameraInfo.exposureState.exposureCompensationIndex
+                val stepEv = state.exposureCompensationStep.toFloat()
+                val ev = actual * stepEv
+                "Exposure 75% (+%.2f EV)".format(Locale.US, ev)
+            } catch (_: Exception) {
+                "Exposure gagal diterapkan"
+            }
+            if (cameraReady && !overlayFailed && recording == null && !photoCaptureInProgress) {
+                setStatus("Siap • " + selectedTemplate.displayName + " • " + exposureInfo)
+            }
+        }, ContextCompat.getMainExecutor(this))
     }
 
     @OptIn(ExperimentalPersistentRecording::class)
