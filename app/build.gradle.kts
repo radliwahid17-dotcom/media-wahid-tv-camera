@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "tv.mediawahid.camera"
+        applicationId = "tv.mediawahid.camera.a16test"
         minSdk = 29
         targetSdk = 35
-        versionCode = 54
-        versionName = "5.0.4"
+        versionCode = 1
+        versionName = "A16-DIAG-1"
     }
 
     compileOptions {
