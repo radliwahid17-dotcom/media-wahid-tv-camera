@@ -100,7 +100,8 @@ class MainActivity : ComponentActivity() {
     private var lowStorageStopRequested = false
     private var overlayFailed = false
     private var photoCaptureInProgress = false
-    private var diagnosticPreview = false
+    private enum class TestMode { NORMAL, RAW_PREVIEW, FULL_NO_EFFECT }
+    private var testMode = TestMode.NORMAL
     private var exposureInfo = "Exposure 75% diproses"
 
     private val preferences by lazy {
@@ -320,7 +321,7 @@ class MainActivity : ComponentActivity() {
 
         bottomPanel.addView(controls, LinearLayout.LayoutParams(-1, -2))
 
-        diagnosticButton = controlButton("TEST CAHAYA (TANPA EFEK)", Color.rgb(35, 83, 96))
+        diagnosticButton = controlButton("1/2 TEST RAW KAMERA", Color.rgb(35, 83, 96))
         diagnosticButton.isEnabled = false
         bottomPanel.addView(diagnosticButton, LinearLayout.LayoutParams(-1, dp(42)).apply {
             topMargin = dp(8)
@@ -412,10 +413,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * A16 5G diagnostic: compare original CameraX preview with the full
-     * watermark/recording processing pipeline. In TEST mode there is only a
-     * Preview use case: no overlay, no exposure override, no photo/recording.
-     * Does not mutate the original final camera build on the main branch.
+     * A16 5G comparison with three camera pipelines:
+     * NORMAL: preview + photo + video + live watermark effect;
+     * RAW_PREVIEW: preview alone, no effect, no exposure boost;
+     * FULL_NO_EFFECT: preview + photo + video WITHOUT any overlay effect
+     *                 and WITHOUT manual exposure boost.
+     * Test modes disable capture to protect users from watermarkless exports.
      */
     private fun toggleDiagnosticPreview() {
         if (recording != null || photoCaptureInProgress) {
@@ -423,11 +426,15 @@ class MainActivity : ComponentActivity() {
             return
         }
         val provider = cameraProvider ?: return
-        diagnosticPreview = !diagnosticPreview
-        diagnosticButton.text = if (diagnosticPreview) {
-            "KEMBALI KE MODE NORMAL"
-        } else {
-            "TEST CAHAYA (TANPA EFEK)"
+        testMode = when (testMode) {
+            TestMode.NORMAL -> TestMode.RAW_PREVIEW
+            TestMode.RAW_PREVIEW -> TestMode.FULL_NO_EFFECT
+            TestMode.FULL_NO_EFFECT -> TestMode.NORMAL
+        }
+        diagnosticButton.text = when (testMode) {
+            TestMode.NORMAL -> "1/2 TEST RAW KAMERA"
+            TestMode.RAW_PREVIEW -> "2/2 TEST FULL TANPA EFEK"
+            TestMode.FULL_NO_EFFECT -> "KEMBALI KE NORMAL"
         }
         cameraReady = false
         overlayFailed = false
@@ -439,11 +446,15 @@ class MainActivity : ComponentActivity() {
             waitForPreviewReady(
                 onReady = {
                     setControlsEnabled(true)
-                    if (diagnosticPreview) {
-                        setStatus("TEST RAW A16 • hanya kamera, tanpa efek / exposure")
-                    } else {
-                        setStatus("NORMAL • " + selectedTemplate.displayName + " • " + exposureInfo)
-                        applyExposureAfterPreviewReady()
+                    when (testMode) {
+                        TestMode.RAW_PREVIEW ->
+                            setStatus("TEST 1/2 RAW • hanya preview, tanpa efek")
+                        TestMode.FULL_NO_EFFECT ->
+                            setStatus("TEST 2/2 FULL • foto + video + preview, TANPA watermark")
+                        TestMode.NORMAL -> {
+                            setStatus("NORMAL • " + selectedTemplate.displayName + " • " + exposureInfo)
+                            applyExposureAfterPreviewReady()
+                        }
                     }
                 },
                 onTimeout = {
@@ -560,7 +571,7 @@ class MainActivity : ComponentActivity() {
         val previewUseCase = preview ?: return
         val photoUseCase = imageCapture ?: return
         val videoUseCase = videoCapture ?: return
-        val effect = overlayEffect ?: return
+        val effect = overlayEffect
 
         val selector = CameraSelector.Builder()
             .requireLensFacing(lensFacing)
@@ -568,9 +579,7 @@ class MainActivity : ComponentActivity() {
 
         provider.unbindAll()
 
-        if (diagnosticPreview) {
-            // Crucial isolation: no OverlayEffect, VideoCapture, or ImageCapture
-            // in the raw camera preview pipeline.
+        if (testMode == TestMode.RAW_PREVIEW) {
             boundCamera = provider.bindToLifecycle(this, selector, previewUseCase)
             return
         }
@@ -579,7 +588,9 @@ class MainActivity : ComponentActivity() {
             .addUseCase(previewUseCase)
             .addUseCase(photoUseCase)
             .addUseCase(videoUseCase)
-            .addEffect(effect)
+        if (testMode == TestMode.NORMAL) {
+            groupBuilder.addEffect(effect ?: error("Watermark engine unavailable"))
+        }
 
         previewView.viewPort?.let { groupBuilder.setViewPort(it) }
 
@@ -1072,7 +1083,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setControlsEnabled(enabled: Boolean) {
-        val captureEnabled = enabled && !diagnosticPreview
+        val captureEnabled = enabled && testMode == TestMode.NORMAL
         recordButton.isEnabled = captureEnabled
         photoButton.isEnabled = captureEnabled
         switchButton.isEnabled = captureEnabled
