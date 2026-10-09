@@ -2,7 +2,7 @@ name: Build MEDIA WAHID TV Camera Final
 
 on:
   push:
-    branches: [ main, final-v5-live-watermark, a16-lowlight-fps-experiment ]
+    branches: [ main, final-v5-live-watermark, a16-lowlight-fps-experiment, a16-fps-soft-light-60 ]
   workflow_dispatch:
 
 jobs:
@@ -39,11 +39,12 @@ jobs:
           RENDERER=app/src/main/java/tv/mediawahid/camera/LiveWatermarkRenderer.kt
           GRADLE=app/build.gradle.kts
 
-          grep -q 'versionName = "A16-FPS-1"' "$GRADLE"
-          grep -q 'applicationId = "tv.mediawahid.camera.a16fps"' "$GRADLE"
+          grep -q 'versionName = "A16-FPS-60-1"' "$GRADLE"
+          grep -q 'applicationId = "tv.mediawahid.camera.a16soft"' "$GRADLE"
           grep -q 'private fun returnFromPhoto' "$MAIN"
           grep -q 'selectSupportedLowLightFps' "$MAIN"
           grep -q 'videoBuilder.setTargetFrameRate' "$MAIN"
+          grep -q 'BRIGHT_EXPOSURE_PERCENT = 0.60f' "$MAIN"
           grep -q 'previewBuilder.setTargetFrameRate' "$MAIN"
           grep -q 'if (photoCaptureInProgress)' "$MAIN"
           grep -q 'cameraX = "1.6.2"' "$GRADLE"
@@ -93,15 +94,15 @@ jobs:
           test -s "$APK"
           unzip -l "$APK" | grep -q 'media_wahid_logo_original'
           unzip -l "$APK" | grep -q 'masjid_raya_logo'
-          cp "$APK" MEDIA-WAHID-TV-Camera-A16-FPS-1.apk
-          sha256sum MEDIA-WAHID-TV-Camera-A16-FPS-1.apk > MEDIA-WAHID-TV-Camera-A16-FPS-1.sha256
+          cp "$APK" MEDIA-WAHID-TV-Camera-A16-FPS-60.apk
+          sha256sum MEDIA-WAHID-TV-Camera-A16-FPS-60.apk > MEDIA-WAHID-TV-Camera-A16-FPS-60.sha256
 
       - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
-          name: MEDIA-WAHID-TV-Camera-A16-FPS-1
+          name: MEDIA-WAHID-TV-Camera-A16-FPS-60
           path: |
-            MEDIA-WAHID-TV-Camera-A16-FPS-1.apk
-            MEDIA-WAHID-TV-Camera-A16-FPS-1.sha256
+            MEDIA-WAHID-TV-Camera-A16-FPS-60.apk
+            MEDIA-WAHID-TV-Camera-A16-FPS-60.sha256
           if-no-files-found: error
           retention-days: 30
