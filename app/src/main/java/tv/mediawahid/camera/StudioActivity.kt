@@ -441,22 +441,40 @@ class StudioActivity : ComponentActivity() {
         val video = isVideo
         val token = ++previewToken
         worker.execute {
+            var frame: Bitmap? = null
+            var result: Bitmap? = null
             try {
-                val frame = if (video) getVideoFrame(uri) else getImage(uri, 1400)
-                val result = selectedEffect.applyToPhoto(frame)
+                frame = if (video) getVideoFrame(uri) else getImage(uri, 1400)
+                result = selectedEffect.applyToPhoto(frame)
                 branding.drawOnPhoto(result, selectedTemplate)
+                val originalBitmap = frame
+                val resultBitmap = result
                 runOnUiThread {
                     if (token != previewToken || isFinishing || isDestroyed) {
-                        result.recycle()
+                        originalBitmap.recycle()
+                        resultBitmap.recycle()
                         return@runOnUiThread
                     }
-                    preview.setImageBitmap(result)
-                    setStatus((if (video) "Pratinjau 1 frame video" else "Pratinjau foto") +
-                        " • " + selectedEffect.title + " • " + selectedTemplate.displayName)
+                    val lastOriginal = originalPreview
+                    val lastEdited = editedPreview
+                    originalPreview = originalBitmap
+                    editedPreview = resultBitmap
+                    showingOriginal = false
+                    preview.setImageBitmap(resultBitmap)
+                    compareButton.text = "◉  LIHAT ASLI"
+                    compareButton.visibility = View.VISIBLE
+                    if (lastOriginal !== originalBitmap) lastOriginal?.recycle()
+                    if (lastEdited !== resultBitmap) lastEdited?.recycle()
+                    setStatus((if (video) "Preview frame video" else "Preview foto") +
+                        "  •  " + selectedEffect.title + "  •  " + selectedTemplate.displayName)
                 }
-                frame.recycle()
             } catch (error: Throwable) {
-                runOnUiThread { if (token == previewToken) setStatus("Gagal membaca pratinjau: " + error.message) }
+                result?.recycle()
+                frame?.recycle()
+                runOnUiThread {
+                    if (token == previewToken && !isDestroyed)
+                        setStatus("Gagal membaca preview: " + error.message)
+                }
             }
         }
     }
@@ -476,8 +494,17 @@ class StudioActivity : ComponentActivity() {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(this, uri)
-            retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                ?: error("Frame video tidak bisa dibaca")
+            val raw = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: error("Frame video tidak dapat dibaca")
+            val edge = max(raw.width, raw.height)
+            if (edge <= 1400) raw else {
+                val factor = 1400f / edge.toFloat()
+                val resized = Bitmap.createScaledBitmap(raw,
+                    max(1, (raw.width * factor).toInt()),
+                    max(1, (raw.height * factor).toInt()), true)
+                if (raw !== resized) raw.recycle()
+                resized
+            }
         } finally {
             retriever.release()
         }
