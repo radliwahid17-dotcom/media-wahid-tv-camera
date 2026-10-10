@@ -282,17 +282,55 @@ class StudioActivity : ComponentActivity() {
             setPadding(0, 0, 0, dp(17))
         })
 
-        saveButton = button("SIMPAN HASIL + WATERMARK", Color.rgb(22, 125, 102)).apply {
+        val finishCard = studioCard()
+        finishCard.addView(label("04   EXPORT / SELESAI", 13f, Color.rgb(112, 234, 181), true))
+        finishCard.addView(label("File hasil disimpan terpisah. Asli tetap aman.", 12f, subtle).apply {
+            setPadding(0, dp(7), 0, dp(12))
+        })
+        saveButton = button("↗   SIMPAN HASIL + WATERMARK", Color.rgb(47, 218, 163)).apply {
+            setTextColor(Color.rgb(8, 33, 26))
             setOnClickListener { startExport() }
         }
-        container.addView(saveButton, LinearLayout.LayoutParams(-1, dp(55)))
-        cancelButton = button("BATALKAN EKSPOR", Color.rgb(107, 44, 52)).apply {
-            visibility = android.view.View.GONE
+        finishCard.addView(saveButton, LinearLayout.LayoutParams(-1, dp(57)))
+        progressPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progressTintList = ColorStateList.valueOf(Color.rgb(56, 224, 169))
+            progressBackgroundTintList = ColorStateList.valueOf(Color.rgb(46, 67, 77))
+        }
+        progressPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(7)).apply {
+            topMargin = dp(13)
+        })
+        finishCard.addView(progressPanel)
+        cancelButton = button("BATALKAN EKSPOR", Color.rgb(102, 50, 54)).apply {
+            visibility = View.GONE
             setOnClickListener { cancelExport() }
         }
-        container.addView(cancelButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
-        container.addView(label("File asli tetap aman. Ekspor video panjang membutuhkan ruang kosong dan aplikasi harus tetap dibuka.", 11f, subtle).apply {
-            setPadding(0, dp(12), 0, 0)
+        finishCard.addView(cancelButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
+            topMargin = dp(10)
+        })
+        resultPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+        }
+        resultPanel.addView(button("✓  BUKA DI GALERI", Color.rgb(29, 119, 91)).apply {
+            setOnClickListener { openResult() }
+        }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(7) })
+        resultPanel.addView(button("↗  BAGIKAN", Color.rgb(34, 65, 73)).apply {
+            setOnClickListener { shareResult() }
+        }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        finishCard.addView(resultPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(11) })
+        finishCard.addView(label("Render video panjang butuh ruang kosong dan Studio harus tetap terbuka.", 11f, subtle).apply {
+            setPadding(0, dp(13), 0, 0)
+        })
+        container.addView(finishCard)
+        container.addView(label("EDIT OFFLINE  •  PRIVASI TERJAGA  •  TIDAK UPLOAD VIDEO",
+            10f, Color.rgb(103, 135, 145), true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(24), 0, dp(8))
         })
         updateSelection()
     }
