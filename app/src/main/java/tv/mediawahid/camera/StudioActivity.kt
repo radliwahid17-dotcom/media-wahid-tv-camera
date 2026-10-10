@@ -1,6 +1,10 @@
 package tv.mediawahid.camera
 
 import android.content.ContentValues
+import android.content.res.ColorStateList
+import android.provider.OpenableColumns
+import android.view.View
+import android.widget.ProgressBar
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -64,6 +68,17 @@ class StudioActivity : ComponentActivity() {
     private lateinit var cancelButton: TextView
     private lateinit var dualButton: TextView
     private lateinit var singleButton: TextView
+    private lateinit var sourceInfo: TextView
+    private lateinit var compareButton: TextView
+    private lateinit var effectDescription: TextView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var progressPanel: LinearLayout
+    private lateinit var resultPanel: LinearLayout
+    private var originalPreview: Bitmap? = null
+    private var editedPreview: Bitmap? = null
+    private var showingOriginal = false
+    private var lastOutput: Uri? = null
+    private var savingVideo = false
     private val effectButtons = mutableMapOf<StudioEffect, TextView>()
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
