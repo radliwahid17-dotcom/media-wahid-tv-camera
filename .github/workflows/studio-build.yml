@@ -30,13 +30,13 @@ jobs:
           grep -q 'class StudioActivity' app/src/main/java/tv/mediawahid/camera/StudioActivity.kt
           grep -q 'class StudioWatermark' app/src/main/java/tv/mediawahid/camera/StudioWatermark.kt
           grep -q 'enum class StudioEffect' app/src/main/java/tv/mediawahid/camera/StudioEffects.kt
-          grep -q 'versionName = "6.0.1-logo-large"' app/build.gradle.kts
+          grep -q 'versionName = "6.0.2-logo-50"' app/build.gradle.kts
       - name: Compile studio APK
         run: gradle --no-daemon clean :app:assembleDebug :app:testDebugUnitTest
       - name: Upload installable preview
         uses: actions/upload-artifact@v4
         with:
-          name: MEDIA-WAHID-TV-Studio-v6.0.1-LARGE-LOGO
+          name: MEDIA-WAHID-TV-Studio-v6.0.2-LOGO-50
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
