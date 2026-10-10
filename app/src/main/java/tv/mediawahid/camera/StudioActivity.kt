@@ -28,6 +28,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
@@ -91,7 +92,25 @@ class StudioActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         template = WatermarkTemplate.fromStorage(prefs.getString("template", "dual"))
+        // Recovery from interrupted previous exports: do not delete user gallery media.
+        worker.execute {
+            cacheDir.listFiles()?.filter {
+                it.isFile && it.name.startsWith("wahid_studio_") &&
+                    it.name.endsWith(".mp4") &&
+                    System.currentTimeMillis() - it.lastModified() > 24L * 60L * 60L * 1000L
+            }?.forEach { it.delete() }
+        }
         buildUi()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (exporting) {
+                    setStatus("Ekspor berjalan. Batalkan dulu jika ingin keluar.")
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
         handleShare(intent)
     }
 
@@ -715,8 +734,14 @@ class StudioActivity : ComponentActivity() {
     private fun dp(value: Int) = (resources.displayMetrics.density * value).toInt()
 
     override fun onDestroy() {
+        previewToken++
         exporter?.cancel()
         ui.removeCallbacksAndMessages(null)
+        if (::preview.isInitialized) preview.setImageDrawable(null)
+        originalPreview?.recycle()
+        editedPreview?.recycle()
+        originalPreview = null
+        editedPreview = null
         worker.shutdown()
         super.onDestroy()
     }
