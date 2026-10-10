@@ -1,0 +1,42 @@
+name: Build MEDIA WAHID TV Studio Preview
+on:
+  push:
+    branches: [ studio-editor-six-effects ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  studio-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Restore verified original mosque logo
+        run: |
+          set -euo pipefail
+          cat app/src/main/logo-source/masjid_final.part*.b64 | tr -d '\n\r ' | base64 -d > app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg
+          echo '667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5  app/src/main/res/drawable-nodpi/masjid_raya_logo.jpg' | sha256sum -c -
+          test "$(stat -c%s app/src/main/res/drawable-nodpi/media_wahid_logo_original.jpg)" = '12293'
+      - name: Verify Studio and six presets
+        run: |
+          grep -q 'class StudioActivity' app/src/main/java/tv/mediawahid/camera/StudioActivity.kt
+          grep -q 'class StudioWatermark' app/src/main/java/tv/mediawahid/camera/StudioWatermark.kt
+          grep -q 'enum class StudioEffect' app/src/main/java/tv/mediawahid/camera/StudioEffects.kt
+          grep -q 'versionName = "6.0.0-studio-preview"' app/build.gradle.kts
+      - name: Compile studio APK
+        run: gradle --no-daemon clean :app:assembleDebug :app:testDebugUnitTest
+      - name: Upload installable preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: MEDIA-WAHID-TV-Studio-v6-PREVIEW
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
