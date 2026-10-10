@@ -514,8 +514,14 @@ class StudioActivity : ComponentActivity() {
         val uri = inputUri ?: run { setStatus("Pilih foto atau video dulu."); return }
         if (exporting) return
         exporting = true
+        savingVideo = false
+        lastOutput = null
+        resultPanel.visibility = View.GONE
         saveButton.isEnabled = false
-        cancelButton.visibility = if (isVideo) android.view.View.VISIBLE else android.view.View.GONE
+        progressPanel.visibility = View.VISIBLE
+        progressBar.progress = 0
+        progressBar.isIndeterminate = !isVideo
+        cancelButton.visibility = if (isVideo) View.VISIBLE else View.GONE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val effect = preset
         val chosenTemplate = template
@@ -543,7 +549,7 @@ class StudioActivity : ComponentActivity() {
                 } finally {
                     result.recycle()
                 }
-                runOnUiThread { endExport("Foto berhasil disimpan di Galeri → Pictures/MEDIA WAHID TV") }
+                runOnUiThread { endExport("Foto tersimpan di Galeri → Pictures/MEDIA WAHID TV", output) }
             } catch (error: Throwable) {
                 runOnUiThread { endExport("Gagal ekspor foto: " + error.message) }
             }
@@ -567,7 +573,10 @@ class StudioActivity : ComponentActivity() {
             exporter = Transformer.Builder(this)
                 .addListener(object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                        setStatus("Render selesai. Menyalin hasil ke Galeri...")
+                        savingVideo = true
+                        cancelButton.visibility = View.GONE
+                        progressBar.isIndeterminate = true
+                        setStatus("Render 100%. Menyimpan ke Galeri, jangan tutup aplikasi...")
                         saveVideoCopy(output)
                     }
                     override fun onError(
@@ -596,7 +605,8 @@ class StudioActivity : ComponentActivity() {
                 runCatching {
                     val progress = ProgressHolder()
                     if (current.getProgress(progress) == Transformer.PROGRESS_STATE_AVAILABLE) {
-                        setStatus("Memproses video " + progress.progress + "% • biarkan aplikasi terbuka")
+                        progressBar.progress = progress.progress
+                        setStatus("Render video " + progress.progress + "% • biarkan aplikasi terbuka")
                     }
                 }
                 pollProgress()
@@ -618,7 +628,7 @@ class StudioActivity : ComponentActivity() {
                     contentResolver.delete(destination, null, null)
                     throw error
                 }
-                runOnUiThread { endExport("Video disimpan di Galeri → Movies/MEDIA WAHID TV") }
+                runOnUiThread { endExport("Video tersimpan di Galeri → Movies/MEDIA WAHID TV", destination) }
             } catch (error: Throwable) {
                 runOnUiThread { endExport("Gagal menyimpan video: " + error.message) }
             } finally {
@@ -651,19 +661,30 @@ class StudioActivity : ComponentActivity() {
     }
 
     private fun cancelExport() {
+        if (savingVideo) {
+            setStatus("Sedang menyimpan file final. Tidak bisa dibatalkan saat ini.")
+            return
+        }
         exporter?.cancel()
         exporter = null
         exportFile?.delete()
         endExport("Ekspor dibatalkan; file asli tetap aman.")
     }
 
-    private fun endExport(message: String) {
+    private fun endExport(message: String, output: Uri? = null) {
         exporting = false
+        savingVideo = false
         exporter = null
         exportFile = null
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         saveButton.isEnabled = true
-        cancelButton.visibility = android.view.View.GONE
+        progressPanel.visibility = View.GONE
+        progressBar.isIndeterminate = false
+        cancelButton.visibility = View.GONE
+        if (output != null) {
+            lastOutput = output
+            resultPanel.visibility = View.VISIBLE
+        }
         setStatus(message)
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
