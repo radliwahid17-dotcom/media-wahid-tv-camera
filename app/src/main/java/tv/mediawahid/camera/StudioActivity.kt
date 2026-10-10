@@ -109,7 +109,7 @@ class StudioActivity : ComponentActivity() {
         val subtle = Color.rgb(184, 204, 209)
         val root = ScrollView(this).apply {
             setBackgroundColor(bg)
-            fillViewport = true
+            isFillViewport = true
         }
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
