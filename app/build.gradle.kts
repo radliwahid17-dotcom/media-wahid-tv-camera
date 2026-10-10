@@ -11,8 +11,8 @@ android {
         applicationId = "tv.mediawahid.studio"
         minSdk = 29
         targetSdk = 35
-        versionCode = 62
-        versionName = "6.0.1-logo-large"
+        versionCode = 63
+        versionName = "6.0.2-logo-50"
     }
 
     compileOptions {
