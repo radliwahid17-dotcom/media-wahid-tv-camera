@@ -13,7 +13,7 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
-            android:name=".StudioActivity"
+            android:name="tv.mediawahid.camera.StudioActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true">
             <intent-filter>
@@ -33,7 +33,7 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
-        <activity android:name=".MainActivity" android:exported="false"
+        <activity android:name="tv.mediawahid.camera.MainActivity" android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>
