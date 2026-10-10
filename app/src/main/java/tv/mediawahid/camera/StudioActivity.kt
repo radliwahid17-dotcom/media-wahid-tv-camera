@@ -119,24 +119,60 @@ class StudioActivity : ComponentActivity() {
     }
 
     private fun buildUi() {
-        val bg = Color.rgb(11, 19, 26)
         val white = Color.WHITE
-        val subtle = Color.rgb(184, 204, 209)
+        val subtle = Color.rgb(165, 186, 193)
         val root = ScrollView(this).apply {
-            setBackgroundColor(bg)
+            setBackgroundColor(Color.rgb(9, 16, 22))
             isFillViewport = true
         }
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(30), dp(18), dp(28))
+            setPadding(dp(18), dp(27), dp(18), dp(34))
         }
         root.addView(container)
         setContentView(root)
 
-        container.addView(label("MEDIA WAHID TV", 23f, white, true))
-        container.addView(label("STUDIO  •  EDITOR FOTO & VIDEO", 12f, subtle))
-        container.addView(label("Rekam dengan kamera asli Samsung. Tambahkan logo dan efek di sini.", 13f, subtle).apply {
-            setPadding(0, dp(10), 0, dp(15))
+        val brand = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+        }
+        brand.addView(label("MW", 20f, Color.rgb(7, 29, 24), true).apply {
+            gravity = Gravity.CENTER
+            background = roundedBackground(Color.rgb(77, 225, 173), Color.rgb(77, 225, 173), 16)
+        }, LinearLayout.LayoutParams(dp(56), dp(56)))
+        val brandText = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+        }
+        brandText.addView(label("MEDIA WAHID TV", 18f, white, true))
+        brandText.addView(label("S T U D I O   /   6.1", 11f, Color.rgb(94, 221, 172), true))
+        brand.addView(brandText, LinearLayout.LayoutParams(0, -2, 1f))
+        brand.addView(label("● OFFLINE", 10f, Color.rgb(95, 222, 170), true).apply {
+            setPadding(dp(8), dp(10), dp(8), dp(10))
+            background = roundedBackground(Color.rgb(26, 55, 49), Color.rgb(26, 55, 49), 12)
+        })
+        container.addView(brand)
+        container.addView(label("Rekam asli. Edit berkelas.", 24f, white, true).apply {
+            setPadding(0, dp(27), 0, dp(6))
+        })
+        container.addView(label(
+            "Rekam dengan kamera Samsung. Logo dan warna disempurnakan di Studio, tanpa mengubah file asli.",
+            13f, subtle
+        ).apply { setPadding(0, 0, 0, dp(20)) })
+        val steps = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("01  GALERI", "02  EDIT", "03  SIMPAN").forEachIndexed { index, title ->
+            steps.addView(label(title, 10f,
+                if (index == 0) Color.rgb(93, 229, 176) else Color.rgb(146, 165, 174), true).apply {
+                gravity = Gravity.CENTER
+                background = roundedBackground(
+                    if (index == 0) Color.rgb(20, 57, 48) else Color.rgb(25, 36, 44),
+                    Color.rgb(38, 58, 67), 10)
+            }, LinearLayout.LayoutParams(0, dp(35), 1f).apply {
+                rightMargin = dp(5)
+            })
+        }
+        container.addView(steps, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(18)
         })
 
         container.addView(button("PILIH FOTO / VIDEO DARI GALERI", Color.rgb(24, 101, 88)).apply {
