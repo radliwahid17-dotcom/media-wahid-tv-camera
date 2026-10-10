@@ -11,8 +11,8 @@ android {
         applicationId = "tv.mediawahid.studio"
         minSdk = 29
         targetSdk = 35
-        versionCode = 60
-        versionName = "6.0.0-studio-preview"
+        versionCode = 61
+        versionName = "6.1.0-studio-preview"
     }
 
     compileOptions {
@@ -39,4 +39,5 @@ dependencies {
     val media3 = "1.11.1"
     implementation("androidx.media3:media3-transformer:$media3")
     implementation("androidx.media3:media3-effect:$media3")
+    testImplementation("junit:junit:4.13.2")
 }
