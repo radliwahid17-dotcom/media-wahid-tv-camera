@@ -1,28 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <uses-feature
-        android:name="android.hardware.camera.any"
-        android:required="true" />
+    <!-- Studio only reads user-selected media. No camera, audio recording or network permissions. -->
 
     <application
         android:allowBackup="true"
         android:hardwareAccelerated="true"
-        android:label="MEDIA WAHID TV"
+        android:label="Media Wahid TV Studio"
+        android:icon="@drawable/studio_launcher_icon"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
-
+        android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
-            android:name=".MainActivity"
+            android:name="tv.mediawahid.camera.StudioActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
-            android:screenOrientation="fullSensor"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
     </application>

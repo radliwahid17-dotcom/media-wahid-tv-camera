@@ -1,36 +1,35 @@
-# MEDIA WAHID TV Camera v5.0.0 — Final Live Watermark
+# MEDIA WAHID TV STUDIO v6.0 — PREVIEW
 
-Versi final mengganti alur lama "buka Samsung Camera → pilih video → render ulang" dengan CameraX native di dalam aplikasi.
+**Editor baru terpisah dari aplikasi Camera v5.** Aplikasi ini tidak merekam video: rekam memakai kamera Samsung, lalu impor hasilnya dari Galeri atau menu Share.
 
-## Tujuan utama
-- Rekaman panjang tanpa batas durasi buatan aplikasi.
-- Target utama FHD (1920×1080) dengan fallback aman bila perangkat tidak mendukung. Bitrate ditargetkan 8 Mbps untuk endurance dan ukuran file yang lebih terprediksi.
-- Watermark ditanam langsung saat frame direkam, jadi setelah tombol STOP tidak ada proses render video panjang.
-- Video langsung disimpan ke Galeri → Movies → MEDIA WAHID TV.
-- Foto langsung disimpan ke Galeri → Pictures → MEDIA WAHID TV.
-- Template dipilih sebelum foto/rekam dan dikunci selama rekaman.
-- Kamera depan/belakang dapat diganti saat recording menggunakan persistent recording.
-- Pinch-to-zoom dan tap-to-focus.
-- Rekaman tidak boleh keluar lewat tombol Back sebelum dihentikan.
-- Jika storage hampir habis, aplikasi menghentikan rekaman secara aman.
-- File hasil rekaman yang finalize dengan error dibersihkan agar tidak meninggalkan file rusak.
+## Alur penggunaan
+1. Rekam menggunakan aplikasi Samsung Camera, atau ambil foto.
+2. Buka MEDIA WAHID TV STUDIO dan pilih foto/video, atau gunakan Share dari Galeri.
+3. Pilih template logo: **Masjid + Media Wahid TV** atau **Media Wahid TV only**.
+4. Pilih efek: **Default** (warna asli), **Crystal Clear**, **Bright Vision**, **True Color**, **Cinematic Pro**, atau **Classic Mono**.
+5. Periksa pratinjau foto/frame pertama, lalu tekan **SIMPAN HASIL + WATERMARK**.
+6. File keluaran terpisah tersimpan di Pictures/MEDIA WAHID TV atau Movies/MEDIA WAHID TV.
 
-## Template
-### MASJID + MEDIA WAHID TV
-- Logo Masjid kiri atas.
-- Logo MEDIA WAHID TV kanan atas.
+Aset logo asli dipertahankan dari repo camera. Jangan menggantinya dengan placeholder.
 
-### MEDIA WAHID TV
-- Logo MEDIA WAHID TV kanan atas.
+## Implementasi
+- Android native Kotlin, minimal Android 10 (API 29).
+- Media3 Transformer 1.11.1: filter OpenGL dan watermark di semua frame video.
+- Photo: Bitmap/ColorMatrix + logo kemudian disimpan JPEG berkualitas 96.
+- Foto panjang sisi maksimal 6000 px untuk membatasi penggunaan memori; foto yang lebih besar akan dikecilkan.
+- Video tidak mempunyai batas durasi yang ditentukan aplikasi. Perangkat, codec, baterai, suhu, penyimpanan, dan waktu proses tetap membatasi kemampuan nyata.
+- Video diproses sementara di cache aplikasi dan kemudian disalin ke Galeri. Ruang kosong harus mencukupi kedua file.
+- Untuk saat ini **wajib biarkan aplikasi terbuka selama ekspor video**; belum ada foreground service untuk render background.
+- Suara video ditangani oleh Media3 Transformer; sinkronisasi audio dan kualitas perlu diuji pada perangkat sesungguhnya.
+- Default berarti tanpa filter warna tambahan; ekspor dengan watermark tetap membutuhkan encoding ulang dan bukan salinan bit-identik.
+- Video preview adalah **satu frame**, bukan video playback filter real-time.
+- Instal berdampingan dengan Camera v5: applicationId `tv.mediawahid.studio`.
 
-## Long recording
-Aplikasi tidak menetapkan batas 30 detik, 50 menit, 90 menit, atau batas durasi lain. Durasi nyata dibatasi oleh storage, kondisi termal perangkat, baterai, dan kemampuan encoder perangkat.
+## Uji sebelum dianggap final
+- Foto portrait dan landscape; dua template dan enam efek.
+- Video pendek 1–3 menit, 30 menit, 90 menit, 120 menit; semua template dan orientasi.
+- Ukuran, kejernihan, posisi logo, audio sync, frame drop, suhu dan kebutuhan free space.
+- Batal ekspor, file sumber tidak berubah, file hasil benar muncul di Galeri.
+- Coba aplikasi Samsung Camera yang sama persis dengan milik pengguna.
 
-Untuk target operasional 90 menit, aplikasi mensyaratkan minimal 8 GB ruang kosong sebelum mulai dan akan menghentikan recording secara aman jika ruang kosong turun di bawah 1 GB. Baterai dan kondisi termal perangkat tetap perlu dijaga.
-
-## Build target
-- Android minSdk 29
-- CameraX 1.6.2 stable
-- FHD preferred
-- Direct MediaStore output
-- Live OverlayEffect watermark
+**Status: kode preview sudah dibuat. Build GitHub Actions dapat membuat debug APK. Belum sertifikasi uji HP Samsung 90–120 menit.**
