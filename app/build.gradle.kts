@@ -8,7 +8,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "tv.mediawahid.camera"
+        applicationId = "tv.mediawahid.studio"
         minSdk = 29
         targetSdk = 35
         versionCode = 60
