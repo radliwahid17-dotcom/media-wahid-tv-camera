@@ -20,7 +20,7 @@ class StudioWatermark(private val context: Context) {
         val canvas = Canvas(bitmap)
         val shortSide = minOf(bitmap.width, bitmap.height).toFloat()
         val margin = shortSide * 0.034f
-        val logoWidth = shortSide * 0.20f
+        val logoWidth = shortSide * 0.30f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         if (template == WatermarkTemplate.DUAL) {
             drawImage(canvas, R.drawable.masjid_raya_logo, margin, margin, logoWidth, paint)
@@ -68,7 +68,7 @@ class StudioWatermark(private val context: Context) {
         val settings = StaticOverlaySettings.Builder()
             .setBackgroundFrameAnchor(anchorX, 0.94f)
             .setOverlayFrameAnchor(logoAnchorX, 1f)
-            .setScale(0.20f, 0.20f)
+            .setScale(0.30f, 0.30f)
             .build()
         return BitmapOverlay.createStaticBitmapOverlay(image, settings)
     }
