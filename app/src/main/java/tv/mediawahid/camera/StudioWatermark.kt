@@ -12,6 +12,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.StaticOverlaySettings
+import androidx.media3.effect.TextureOverlay
 
 /** Keeps the real assets from the existing Camera app. No placeholder branding. */
 class StudioWatermark(private val context: Context) {
@@ -50,7 +51,7 @@ class StudioWatermark(private val context: Context) {
      */
     @OptIn(UnstableApi::class)
     fun videoEffects(template: WatermarkTemplate): List<Effect> {
-        val overlays = mutableListOf<BitmapOverlay>()
+        val overlays = mutableListOf<TextureOverlay>()
         if (template == WatermarkTemplate.DUAL) {
             overlays.add(videoLogo(R.drawable.masjid_raya_logo, left = true))
         }
