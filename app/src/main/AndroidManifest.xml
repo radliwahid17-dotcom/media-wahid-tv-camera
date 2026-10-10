@@ -1,15 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Existing Camera activity is retained as legacy; Studio does not need camera access. -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- Studio only reads user-selected media. No camera, audio recording or network permissions. -->
 
     <application
         android:allowBackup="true"
         android:hardwareAccelerated="true"
-        android:label="MEDIA WAHID TV STUDIO"
+        android:label="Media Wahid TV Studio"
+        android:icon="@drawable/studio_launcher_icon"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
@@ -33,7 +31,5 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
-        <activity android:name="tv.mediawahid.camera.MainActivity" android:exported="false"
-            android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>
