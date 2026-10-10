@@ -335,6 +335,48 @@ class StudioActivity : ComponentActivity() {
         updateSelection()
     }
 
+    private fun studioCard(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(16), dp(17), dp(16), dp(17))
+        background = roundedBackground(Color.rgb(20, 30, 40), Color.rgb(45, 64, 72), 20)
+    }
+
+    private fun roundedBackground(fill: Int, outline: Int, radius: Int): GradientDrawable =
+        GradientDrawable().apply {
+            cornerRadius = dp(radius).toFloat()
+            setColor(fill)
+            setStroke(dp(1), outline)
+        }
+
+    private fun toggleCompare() {
+        showingOriginal = !showingOriginal
+        preview.setImageBitmap(if (showingOriginal) originalPreview else editedPreview)
+        compareButton.text = if (showingOriginal) "◉  LIHAT HASIL" else "◉  LIHAT ASLI"
+    }
+
+    private fun openResult() {
+        val output = lastOutput ?: return
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(output, contentResolver.getType(output)
+                    ?: if (isVideo) "video/mp4" else "image/jpeg")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+        } catch (_: Exception) {
+            setStatus("Tidak ditemukan aplikasi Galeri untuk membuka hasil.")
+        }
+    }
+
+    private fun shareResult() {
+        val output = lastOutput ?: return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = contentResolver.getType(output) ?: if (isVideo) "video/mp4" else "image/jpeg"
+            putExtra(Intent.EXTRA_STREAM, output)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, "Bagikan Media Wahid TV"))
+    }
+
     private fun selectMedia(uri: Uri) {
         if (exporting) return
         val type = contentResolver.getType(uri) ?: ""
