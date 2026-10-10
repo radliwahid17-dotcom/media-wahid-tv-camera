@@ -175,20 +175,61 @@ class StudioActivity : ComponentActivity() {
             bottomMargin = dp(18)
         })
 
-        container.addView(button("PILIH FOTO / VIDEO DARI GALERI", Color.rgb(24, 101, 88)).apply {
+        val importCard = studioCard()
+        importCard.addView(label("01   IMPORT MEDIA", 12f, Color.rgb(109, 231, 181), true))
+        importCard.addView(label("Pilih hasil foto atau rekaman Samsung.", 13f, subtle).apply {
+            setPadding(0, dp(6), 0, dp(12))
+        })
+        importCard.addView(button("＋   AMBIL FOTO / VIDEO DARI GALERI", Color.rgb(38, 201, 152)).apply {
+            setTextColor(Color.rgb(7, 34, 28))
             setOnClickListener { if (!exporting) picker.launch(arrayOf("image/*", "video/*")) }
-        }, LinearLayout.LayoutParams(-1, dp(52)))
+        }, LinearLayout.LayoutParams(-1, dp(53)))
+        sourceInfo = label("Belum ada file • Share dari Galeri juga bisa", 12f, subtle).apply {
+            setPadding(0, dp(13), 0, 0)
+        }
+        importCard.addView(sourceInfo)
+        container.addView(importCard)
 
+        val previewCard = studioCard()
+        val previewBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        previewBar.addView(label("PREVIEW", 12f, Color.WHITE, true),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        previewBar.addView(label("SAMSUNG  ×  STUDIO", 10f, Color.rgb(103, 225, 184), true))
+        previewCard.addView(previewBar)
+        val previewFrame = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(10, 16, 23))
+        }
+        previewFrame.addView(label("▣\n\nMEDIA WAHID TV\nPilih media untuk mulai", 13f, subtle, true).apply {
+            gravity = Gravity.CENTER
+        }, FrameLayout.LayoutParams(-1, -1))
         preview = ImageView(this).apply {
-            setBackgroundColor(Color.rgb(27, 38, 47))
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "Pratinjau hasil watermark dan efek"
         }
-        container.addView(preview, LinearLayout.LayoutParams(-1, dp(265)).apply {
-            topMargin = dp(15)
+        previewFrame.addView(preview, FrameLayout.LayoutParams(-1, -1))
+        compareButton = button("◉   LIHAT ASLI", Color.rgb(32, 55, 63)).apply {
+            visibility = View.GONE
+            setPadding(dp(10), 0, dp(10), 0)
+            setOnClickListener { toggleCompare() }
+        }
+        previewFrame.addView(compareButton,
+            FrameLayout.LayoutParams(-2, dp(39), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(10)
+                bottomMargin = dp(10)
+            })
+        previewCard.addView(previewFrame, LinearLayout.LayoutParams(-1, dp(270)).apply {
+            topMargin = dp(12)
         })
-
-        status = label("Pilih foto atau video untuk mulai. Mode Default aktif.", 12f, subtle)
+        previewCard.addView(label("Ketuk LIHAT ASLI untuk bandingkan sebelum dan sesudah.", 11f, subtle).apply {
+            setPadding(0, dp(11), 0, 0)
+        })
+        container.addView(previewCard, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(12)
+        })
+        status = label("Pilih file untuk mulai. Mode Default aktif.", 12f, subtle)
         status.setPadding(0, dp(10), 0, dp(14))
         container.addView(status)
 
