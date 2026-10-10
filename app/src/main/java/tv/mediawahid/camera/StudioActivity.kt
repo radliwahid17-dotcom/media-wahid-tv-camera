@@ -386,6 +386,23 @@ class StudioActivity : ComponentActivity() {
         }
         inputUri = uri
         isVideo = type.startsWith("video/")
+        showingOriginal = false
+        lastOutput = null
+        resultPanel.visibility = View.GONE
+        compareButton.visibility = View.GONE
+        sourceInfo.text = try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val filename = cursor.getString(0) ?: "Media Samsung"
+                    val bytes = cursor.getLong(1).coerceAtLeast(0L)
+                    val mb = bytes / 1048576.0
+                    (if (isVideo) "▣ VIDEO" else "▧ FOTO") + "  •  " +
+                        filename.take(30) + "  •  " +
+                        String.format(java.util.Locale.US, "%.1f MB", mb)
+                } else "Media Samsung dipilih"
+            } ?: "Media Samsung dipilih"
+        } catch (_: Exception) { "Media Samsung dipilih" }
         setStatus(if (isVideo) "Membuat pratinjau video..." else "Membaca foto...")
         renderPreview()
     }
@@ -393,20 +410,28 @@ class StudioActivity : ComponentActivity() {
     private fun chooseTemplate(value: WatermarkTemplate) {
         if (exporting) return
         template = value
+        showingOriginal = false
         prefs.edit().putString("template", value.storageValue).apply()
         updateSelection()
         renderPreview()
     }
 
     private fun updateSelection() {
-        val active = Color.rgb(16, 105, 87)
-        val idle = Color.rgb(39, 52, 61)
-        dualButton.background = background(if (template == WatermarkTemplate.DUAL) active else idle)
-        singleButton.background = background(if (template == WatermarkTemplate.MEDIA_ONLY) active else idle)
+        val active = Color.rgb(22, 103, 81)
+        val idle = Color.rgb(31, 46, 57)
+        val dual = template == WatermarkTemplate.DUAL
+        dualButton.background = roundedBackground(if (dual) active else idle,
+            if (dual) Color.rgb(94, 235, 172) else Color.rgb(54, 74, 82), 12)
+        singleButton.background = roundedBackground(if (!dual) active else idle,
+            if (!dual) Color.rgb(94, 235, 172) else Color.rgb(54, 74, 82), 12)
+        dualButton.text = if (dual) "✓ MASJID + MEDIA" else "◧ MASJID + MEDIA"
+        singleButton.text = if (!dual) "✓ MEDIA ONLY" else "◩ MEDIA ONLY"
         effectButtons.forEach { (effect, chip) ->
-            chip.background = background(if (effect == preset) active else idle)
-            chip.text = (if (effect == preset) "✓ " else "") + effect.title
+            val chosen = effect == preset
+            chip.background = roundedBackground(if (chosen) active else idle,
+                if (chosen) Color.rgb(88, 229, 171) else Color.rgb(51, 67, 77), 13)
         }
+        effectDescription.text = preset.title.uppercase() + "  •  " + preset.description
     }
 
     private fun renderPreview() {
