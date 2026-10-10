@@ -275,7 +275,7 @@ class StudioActivity : ComponentActivity() {
         if (exporting) return
         exporting = true
         saveButton.isEnabled = false
-        cancelButton.visibility = android.view.View.VISIBLE
+        cancelButton.visibility = if (isVideo) android.view.View.VISIBLE else android.view.View.GONE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val effect = preset
         val chosenTemplate = template
