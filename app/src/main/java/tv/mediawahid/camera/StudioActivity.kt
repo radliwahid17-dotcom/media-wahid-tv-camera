@@ -233,7 +233,10 @@ class StudioActivity : ComponentActivity() {
         status.setPadding(0, dp(10), 0, dp(14))
         container.addView(status)
 
-        container.addView(label("TEMPLATE LOGO", 13f, white, true))
+        container.addView(label("02   WATERMARK / IDENTITAS", 13f, Color.rgb(110, 224, 177), true))
+        container.addView(label("Logo asli otomatis menempel di seluruh foto atau video.", 12f, subtle).apply {
+            setPadding(0, dp(6), 0, dp(10))
+        })
         val templateRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         dualButton = button("MASJID + MEDIA", Color.rgb(35, 45, 51))
         singleButton = button("MEDIA ONLY", Color.rgb(35, 45, 51))
@@ -243,27 +246,40 @@ class StudioActivity : ComponentActivity() {
         dualButton.setOnClickListener { chooseTemplate(WatermarkTemplate.DUAL) }
         singleButton.setOnClickListener { chooseTemplate(WatermarkTemplate.MEDIA_ONLY) }
 
-        container.addView(label("EFEK (DEFAULT + 5 PILIHAN)", 13f, white, true).apply {
-            setPadding(0, dp(21), 0, dp(9))
+        container.addView(label("03   COLOR LAB  /  6 LOOKS", 13f, Color.rgb(110, 224, 177), true).apply {
+            setPadding(0, dp(23), 0, dp(9))
+        })
+        container.addView(label("Natural atau cinematic. Geser untuk melihat semua efek.", 12f, subtle).apply {
+            setPadding(0, 0, 0, dp(11))
         })
         val effectScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val effectRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        StudioEffect.entries.forEach { effect ->
-            val chip = button(effect.title, Color.rgb(35, 45, 51))
-            chip.setOnClickListener {
-                if (exporting) return@setOnClickListener
-                preset = effect
-                updateSelection()
-                renderPreview()
+        val symbols = listOf("◯", "✦", "☀", "◈", "▧", "◑")
+        StudioEffect.entries.forEachIndexed { index, effect ->
+            val chip = button(symbols[index] + "  " + effect.title + "\n" + effect.description,
+                Color.rgb(31, 45, 54)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), 0, dp(8), 0)
+                textSize = 11.5f
+                setOnClickListener {
+                    if (exporting) return@setOnClickListener
+                    preset = effect
+                    showingOriginal = false
+                    updateSelection()
+                    renderPreview()
+                }
             }
             effectButtons[effect] = chip
-            effectRow.addView(chip, LinearLayout.LayoutParams(dp(132), dp(52)).apply { rightMargin = dp(7) })
+            effectRow.addView(chip, LinearLayout.LayoutParams(dp(170), dp(72)).apply { rightMargin = dp(8) })
         }
         effectScroll.addView(effectRow)
         container.addView(effectScroll)
-
-        container.addView(label("Efek memperbaiki tampilan warna/cahaya, bukan memperbaiki rekaman yang tidak fokus.", 11f, subtle).apply {
-            setPadding(0, dp(8), 0, dp(17))
+        effectDescription = label("DEFAULT • Original Samsung", 12f, subtle).apply {
+            setPadding(0, dp(12), 0, dp(6))
+        }
+        container.addView(effectDescription)
+        container.addView(label("Efek memperhalus tampilan warna/cahaya, bukan memperbaiki fokus yang hilang.", 11f, subtle).apply {
+            setPadding(0, 0, 0, dp(17))
         })
 
         saveButton = button("SIMPAN HASIL + WATERMARK", Color.rgb(22, 125, 102)).apply {
