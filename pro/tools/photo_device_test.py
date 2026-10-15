@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture four photo samples via the original UI; artwork needs separate visual inspection."""
+"""Capture four real camera photos and check the bundled artwork in the saved JPEG pixels."""
 import argparse
 import json
 from pathlib import Path
@@ -7,9 +7,12 @@ import re
 import subprocess
 import time
 import xml.etree.ElementTree as ET
+from PIL import Image
 
 p = argparse.ArgumentParser()
 p.add_argument('--adb', default='adb')
+p.add_argument('--allow-resolution-fallback', action='store_true',
+               help='Test logo embedding at the emulator camera resolution; still report failed FHD assertions')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[1]
 output = root / 'artifacts/photo-evidence'
@@ -52,6 +55,27 @@ def files():
             if line.lower().endswith(('.jpg', '.jpeg'))}
 
 
+def logo_error(photo, name, right):
+    """Compare source artwork samples with their expected positions; never alter evidence images."""
+    source = Image.open(root / 'assets/watermarks' / name).convert('RGB')
+    width, height = photo.size
+    logo_width = width * .25
+    logo_height = logo_width * source.height / source.width
+    left = width * .97 - logo_width if right else width * .03
+    top = height * .03
+    errors = []
+    for y in range(2, source.height - 2, 3):
+        for x in range(2, source.width - 2, 3):
+            expected = source.getpixel((x, y))
+            if min(expected) > 200:  # Ignore white margins: test the recognizable coloured artwork.
+                continue
+            actual = photo.getpixel((int(left + (x + .5) * logo_width / source.width),
+                                     int(top + (y + .5) * logo_height / source.height)))
+            errors.append(sum(abs(a-b) for a,b in zip(actual, expected)) / 3)
+    assert errors
+    return round(sum(errors) / len(errors), 3)
+
+
 click('Select photo mode')
 ready(False)
 outcomes = []
@@ -76,13 +100,21 @@ for front, template in [(False, 1), (False, 2), (True, 2), (True, 1)]:
     metadata = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', local], text=True))
     stream = metadata['streams'][0]
     full_hd = {stream['width'], stream['height']} == {1080, 1920}
+    with Image.open(local) as image:
+        photo = image.convert('RGB')
+        media_error = logo_error(photo, 'logo_media_wahid_tv.png', True)
+        mosque_error = logo_error(photo, 'logo_masjid.png', False)
     outcomes.append({'front': front, 'template': template, 'gallery_file': remote,
                      'width': stream['width'], 'height': stream['height'], 'capture': 'passed',
+                     'media_logo_pixel_error': media_error, 'mosque_logo_pixel_error': mosque_error,
+                     'logos': 'passed' if media_error < 45 and ((mosque_error < 45) if template == 1 else (mosque_error > 45)) else 'failed',
                      'full_hd_assertion': 'passed' if full_hd else 'failed'})
     print(json.dumps(outcomes[-1]), flush=True)
     ready(front)
 (root / 'artifacts/photo-device.json').write_text(json.dumps({
     'outcomes': outcomes,
-    'limitation': 'Original gallery artwork is absent; photos use baseline replacement badges. Visual inspection recorded separately.',
+    'limitation': 'Real emulator camera JPEGs; FHD fallback is reported separately. No video/audio or Samsung hardware exercised.',
 }, indent=2) + '\n')
-assert all(x['full_hd_assertion'] == 'passed' for x in outcomes), 'Photos saved, but Full HD resolution assertion failed; see photo-device.json'
+assert all(x['logos'] == 'passed' for x in outcomes), 'Saved JPEG artwork mismatch; see photo-device.json'
+if not a.allow_resolution_fallback:
+    assert all(x['full_hd_assertion'] == 'passed' for x in outcomes), 'Photos saved, but Full HD resolution assertion failed; see photo-device.json'

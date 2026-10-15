@@ -1,0 +1,20 @@
+{
+  "source": "Artwork already supplied in repository app/src/main/logo-source, recovered from base64 archives; decoded JPEG to RGB PNG without redesign, resizing or background removal.",
+  "dimensions": [
+    303,
+    174
+  ],
+  "background": "Original opaque white JPEG background retained",
+  "logos": {
+    "logo_masjid.png": {
+      "source_parts": "masjid_final.part1.b64 through masjid_final.part7.b64",
+      "source_jpeg_sha256": "667ad7deacf950ac42f3cb8bb3b3b80228399b70f15ae7b9f7f5177bfc3adbb5",
+      "png_sha256": "3555b64ffc6f85ac82d66d0962017f706b72d064de96f046a0f34ee53b88b5ae"
+    },
+    "logo_media_wahid_tv.png": {
+      "source_parts": "logo.part1.b64 through logo.part5.b64",
+      "source_jpeg_sha256": "0e39bb68c188af300ffdceed84e4d7cec262612108020131de1601003e5e98e4",
+      "png_sha256": "bf6e54b73978e4f2cb4a739731dc6d897d6808c91c9fc7cb617c31ec932ea6c5"
+    }
+  }
+}

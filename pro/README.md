@@ -1,7 +1,7 @@
-# Media Wahid TV Camera Pro 1.0.2 FLIP
+# Media Wahid TV Camera Pro 1.0.3 Permanent Logos
 
 Perbaikan terarah terhadap APK Pro 1.0.1 dalam repositori ini. Package tetap
-`tv.mediawahid.camerapro`, versionName `1.0.2`, versionCode `3`.
+`tv.mediawahid.camerapro`, versionName `1.0.3`, versionCode `4`.
 
 Source Kotlin asli tidak tersedia. Proyek Gradle ini mengompilasi delta Java,
 merekonstruksi bytecode aplikasi dengan APKTool, kemudian mempertahankan semua
@@ -20,13 +20,14 @@ sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 python3 tools/verify_apk.py
 ```
 
-Hasil: `artifacts/Media-Wahid-TV-Camera-Pro-1.0.2-FLIP.apk`, SHA256 dan provenance.
+Hasil: `artifacts/Media-Wahid-TV-Camera-Pro-1.0.3-PERMANENT-LOGOS.apk`, SHA256 dan provenance.
 APKTool dan APK referensi diverifikasi terhadap checksum terpin sebelum patch.
 Gradle wrapper memverifikasi checksum distribusi Gradle.
 
-Workflow [Pro 1.0.2 FLIP APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/workflows/pro-flip.yml) menjalankan build,
+Workflow [Pro 1.0.3 Permanent Logos APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/workflows/pro-flip.yml) menjalankan build,
 lint delta Java, 10 unit test, pemeriksaan struktur/resource, upload artifact, lalu
-tujuh cold launch pada emulator Android 11. Lint tidak mengaudit ulang source
+tujuh cold launch, 37 assertion adapter state, dan 32 kasus renderer logo pada
+emulator Android 11. Lint tidak mengaudit ulang source
 aplikasi asli yang tidak tersedia. Run CI yang belum dijalankan tidak dianggap lulus.
 
 ## Perbaikan
@@ -47,16 +48,26 @@ aplikasi asli yang tidak tersedia. Run CI yang belum dijalankan tidak dianggap l
 
 ## Logo dan signing
 
-**APK referensi tidak menyertakan artwork logo Masjid/Media Wahid TV di assets.**
-WatermarkStore asli membaca logo impor galeri dari penyimpanan internal aplikasi;
-jika tidak ada, badge `REPLACE LOGO` ditampilkan. Alur impor, dua template,
-geometry, opacity, rendering foto/video dan ikon asli dipertahankan. Artwork
-yang hanya tersimpan di ponsel tidak dapat dipulihkan dari APK.
+Dua artwork asli dipulihkan dari arsip base64 `app/src/main/logo-source`:
+logo Masjid Raya Vila Inti Persada dan Media Wahid TV. JPEG sumber dikonversi
+menjadi PNG 303×174 tanpa menggambar ulang atau mengubah ukuran; latar putih
+asli dipertahankan. Asal dan SHA256 ada di [assets/artwork.json](assets/artwork.json).
+Salinan JPEG Masjid pada drawable proyek lama rusak; arsip base64 final yang
+utuh digunakan, bukan gambar rusak tersebut.
+
+Aset permanen berada di `assets/watermarks/logo_masjid.png` dan
+`assets/watermarks/logo_media_wahid_tv.png`. WatermarkStore selalu membaca aset
+bawaan, termasuk setelah upgrade dengan file impor lama. Badge placeholder
+dihapus; tombol impor galeri di Settings dihapus dan jalurnya dinonaktifkan.
+Template A tetap Masjid kiri atas + TV kanan atas; B hanya TV kanan atas.
+Ukuran default 25% lebar frame dan margin 3% tetap memakai geometry Pro asli.
+Pipeline OverlayEffect asli tetap menarget preview, foto, dan video (mask 7).
+Perbaikan flip dari 1.0.2 tetap disertakan; tidak ada perubahan Recorder atau UI
+kamera utama dalam revisi logo ini.
 
 Kunci signing 1.0.1 tidak tersedia. Build menggunakan identitas uji yang dibuat
 di luar repositori, dengan password acak yang tidak disimpan dalam Git.
-APK ini **tidak dapat menimpa instalasi 1.0.1 dengan kunci berbeda**. Jangan
-menghapus aplikasi lama sebelum memiliki salinan logo/pengaturan yang diperlukan.
+APK ini **tidak dapat menimpa instalasi 1.0.1 dengan kunci berbeda**. Cadangkan media/pengaturan sebelum mengganti instalasi dengan sertifikat berbeda.
 Package tidak diganti. Kunci uji CI bersifat sementara; run berbeda dapat memiliki
 sertifikat berbeda.
 
@@ -68,6 +79,8 @@ Jangan memasukkan key atau password ke repositori.
 
 ```bash
 python3 tools/smoke_device.py --adb /path/to/adb
+python3 tools/device_state_test.py /path/to/adb
+python3 tools/logo_device_test.py --adb /path/to/adb
 ```
 
 Skrip ini menguji instalasi dan tujuh peluncuran ulang, bukan hasil kamera.

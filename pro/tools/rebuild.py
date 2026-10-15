@@ -61,7 +61,10 @@ def main():
     rebuilt = ROOT / 'build/rebuilt.apk'
     unsigned = ROOT / 'build/unsigned.apk'
     aligned = ROOT / 'build/aligned.apk'
-    final = output / 'Media-Wahid-TV-Camera-Pro-1.0.2-FLIP.apk'
+    final = output / 'Media-Wahid-TV-Camera-Pro-1.0.3-PERMANENT-LOGOS.apk'
+    artwork = json.loads((ROOT / 'assets/artwork.json').read_text())
+    for name, info in artwork['logos'].items():
+        assert sha(ROOT / 'assets/watermarks' / name) == info['png_sha256'], f'Unexpected artwork: {name}'
     run(java, '-jar', apktool, 'b', '-p', framework, '-o', rebuilt, work)
     # Keep the original compiled resources and every unrelated DEX/native entry byte-for-byte.
     # APKTool normalizes resource qualifiers/nine-patches when rebuilding; those changes are unnecessary.
@@ -71,6 +74,9 @@ def main():
         for entry in old.infolist():
             result.writestr(entry, delta.read(entry.filename) if entry.filename in replacements else old.read(entry.filename))
         result.writestr('classes5.dex', delta.read('classes5.dex'), compress_type=zipfile.ZIP_STORED)
+        for name in artwork['logos']:
+            result.write(ROOT / 'assets/watermarks' / name, 'assets/watermarks/' + name,
+                         compress_type=zipfile.ZIP_DEFLATED)
     run(build_tools / 'zipalign', '-P', '16', '-f', '4', unsigned, aligned)
     # Local/CI test signing identity stays outside Git; original private key is unavailable.
     signing = cache / 'signing'
@@ -95,9 +101,10 @@ def main():
     (output / (final.name + '.sha256')).write_text(sha(final) + '  ' + final.name + '\n')
     (output / 'provenance.json').write_text(json.dumps({
         'baseline_sha256': BASELINE_SHA, 'apk_sha256': sha(final),
-        'package': 'tv.mediawahid.camerapro', 'version_name': '1.0.2', 'version_code': 3,
+        'package': 'tv.mediawahid.camerapro', 'version_name': '1.0.3', 'version_code': 4,
         'method': 'APKTool baseline reconstruction + compiled Java delta',
         'signing': 'Test identity; not the original 1.0.1 key',
+        'artwork': artwork,
     }, indent=2) + '\n')
     print('APK:', final)
 
