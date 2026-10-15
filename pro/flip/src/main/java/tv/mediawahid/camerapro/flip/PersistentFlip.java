@@ -243,7 +243,12 @@ public final class PersistentFlip {
         changes.put(13, exposure.getExposureCompensationRange().getUpper());
         changes.put(14, exposure.getExposureCompensationIndex());
         changes.put(15, exposure.getExposureCompensationStep().floatValue());
-        changes.put(22, reverting ? "Camera restored; recording continues" : "Recording");
+        Object state = OriginalAccess.state(service);
+        String phase = OriginalAccess.call(state, "getPhase").toString();
+        String message = (String) OriginalAccess.call(state, "getMessage");
+        if ("PAUSED".equals(phase)) message = reverting ? "Camera restored; paused" : "Paused";
+        if ("RECORDING".equals(phase)) message = reverting ? "Camera restored; recording continues" : "Recording";
+        changes.put(22, message);
         changes.put(23, failure);
         gate.finish(token);
         OriginalAccess.publish(service, changes);
