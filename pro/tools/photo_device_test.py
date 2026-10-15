@@ -53,7 +53,7 @@ def ready(front):
 
 def files():
     return {line for line in adb('shell', 'find', '/sdcard/Pictures', '-type', 'f').splitlines()
-            if line.lower().endswith(('.jpg', '.jpeg'))}
+            if line.lower().endswith(('.jpg', '.jpeg')) and not Path(line).name.startswith('.')}
 
 
 def logo_error(photo, name, right):
