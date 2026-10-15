@@ -72,6 +72,21 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back emulated -camera-front emulated
           script: cd pro && python3 tools/smoke_device.py && python3 tools/device_state_test.py && python3 tools/logo_device_test.py --run-only && adb shell svc wifi disable && adb shell svc data disable && adb shell am start -W -n tv.mediawahid.camerapro/.MainActivity && python3 tools/photo_device_test.py --allow-resolution-fallback
+      - name: Publish validation results
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              for name in ['device-smoke', 'device-state', 'logo-device', 'photo-device']:
+                  path = Path('artifacts') / (name + '.json')
+                  summary.write('### ' + name + '\n\n')
+                  if path.is_file():
+                      summary.write('```json\n' + json.dumps(json.loads(path.read_text()), indent=2) + '\n```\n\n')
+                  else:
+                      summary.write('No result file; inspect failed step.\n\n')
+          PY
       - name: Upload runtime evidence
         if: always()
         uses: actions/upload-artifact@v4

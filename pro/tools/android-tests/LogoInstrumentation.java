@@ -2,8 +2,11 @@ package tv.mediawahid.camerapro.logotest;
 
 import android.app.Instrumentation;
 import android.content.Context;
+import android.content.ContentValues;
 import android.graphics.*;
 import android.os.Bundle;
+import android.net.Uri;
+import android.provider.MediaStore;
 import android.util.Size;
 import androidx.camera.effects.Frame;
 import java.io.*;
@@ -63,6 +66,23 @@ public final class LogoInstrumentation extends Instrumentation {
         float left=right ? w*.97f-width : w*.03f;
         c.drawBitmap(b, null, new RectF(left,h*.03f,left+width,h*.03f+height), new Paint(3));
     }
+    private void saveBitmap(Bitmap bitmap, String name) throws Exception {
+        Context ctx=getTargetContext();
+        ContentValues values=new ContentValues();
+        values.put(MediaStore.Images.Media.DISPLAY_NAME,name);
+        values.put(MediaStore.Images.Media.MIME_TYPE,"image/png");
+        values.put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/MediaWahidLogoValidation");
+        values.put(MediaStore.Images.Media.IS_PENDING,1);
+        Uri uri=ctx.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);
+        check(uri!=null,"Validation image MediaStore entry");
+        try {
+            try(OutputStream stream=ctx.getContentResolver().openOutputStream(uri)) {
+                check(bitmap.compress(Bitmap.CompressFormat.PNG,100,stream),"Validation image export");
+            }
+            values.clear();values.put(MediaStore.Images.Media.IS_PENDING,0);
+            ctx.getContentResolver().update(uri,values,null,null);
+        } catch(Exception error) {ctx.getContentResolver().delete(uri,null,null);throw error;}
+    }
     private void exercise() throws Exception {
         Context ctx = getTargetContext();
         loader = ctx.getClassLoader();
@@ -112,7 +132,7 @@ public final class LogoInstrumentation extends Instrumentation {
                         if(template==1) drawExpected(canvas,mosque,uw,uh,false);
                         int[] want=new int[uw*uh],got=new int[bw*bh];
                         expected.getPixels(want,0,uw,0,0,uw,uh);frame.bitmap.getPixels(got,0,bw,0,0,bw,bh);
-                        int different=0;
+                        int different=0, significant=0, maxDelta=0;
                         for(int y=0;y<uh;y++) for(int x=0;x<uw;x++) {
                             int bx,by;
                             switch(rotation) {
@@ -121,18 +141,30 @@ public final class LogoInstrumentation extends Instrumentation {
                                 case 270: bx=bw-1-y;by=x;break;
                                 default: bx=x;by=y;
                             }
-                            if(want[y*uw+x]!=got[by*bw+bx]) different++;
+                            int actual=got[by*bw+bx], target=want[y*uw+x], delta=0;
+                            if(target!=actual) {
+                                different++;
+                                for(int shift=0;shift<=24;shift+=8) delta=Math.max(delta,Math.abs(((actual>>>shift)&255)-((target>>>shift)&255)));
+                                maxDelta=Math.max(maxDelta,delta);
+                                if(delta>8) significant++;
+                            }
                         }
-                        check(different < want.length*.003,"Logo position/aspect/orientation/template pixels: differences="+different);
+                        // Android Canvas interpolation differs slightly after a quarter turn.
+                        // Ignore channel changes <=8/255; reject misplaced, missing or mirrored artwork.
+                        if(significant >= want.length*.003) {
+                            saveBitmap(frame.bitmap,"debug-actual.png");
+                            saveBitmap(expected,"debug-reference.png");
+                        }
+                        check(significant < want.length*.003,"Logo pixels: differences="+different+" significant="+significant+" maxDelta="+maxDelta+" size="+bw+"x"+bh+" rotation="+rotation+" template="+template+" settings="+call(store,"loadTemplate",template));
                         // The cached overlay must remain intact on the next frame.
                         check(Boolean.TRUE.equals(render.invoke(null,args)),"Cached overlay redraw");
                         int[] again=new int[got.length];frame.bitmap.getPixels(again,0,bw,0,0,bw,bh);
                         check(Arrays.equals(got,again),"No disappearing or duplicate watermark on repeat frame");
                         String name="template-"+template+"-"+bw+"x"+bh+"-r"+rotation+"-"+(mirror?"front":"rear")+".png";
                         if(bw==1920 && (rotation==0||rotation==90) && !mirror) {
-                            try(FileOutputStream stream=new FileOutputStream(new File(output,name))) { frame.bitmap.compress(Bitmap.CompressFormat.PNG,100,stream); }
+                            saveBitmap(frame.bitmap,name);
                         }
-                        cases.put(new JSONObject().put("template",template).put("width",bw).put("height",bh).put("rotation",rotation).put("front_mirrored_input",mirror).put("different_pixels",different));
+                        cases.put(new JSONObject().put("template",template).put("width",bw).put("height",bh).put("rotation",rotation).put("front_mirrored_input",mirror).put("different_pixels",different).put("significant_pixels",significant).put("max_channel_delta",maxDelta));
                         frames++;expected.recycle();frame.bitmap.recycle();
                     }
                 }
@@ -152,6 +184,7 @@ public final class LogoInstrumentation extends Instrumentation {
             JSONObject report=new JSONObject().put("result","passed").put("assertions",checks).put("frames",frames).put("cases",cases)
                 .put("scope","Installed final APK asset loading and original OverlayEffect callback with Android Bitmap/Canvas; synthetic frames, not camera video/audio or physical Samsung");
             try(FileWriter writer=new FileWriter(new File(output,"logo-device.json"))) { writer.write(report.toString(2)); }
+            result.putString("report",report.toString());
             result.putString("stream","LOGO_RENDER_PASS "+checks+" assertions; "+frames+" frames\n");finish(-1,result);
         } catch(Throwable error) {
             StringWriter text=new StringWriter();error.printStackTrace(new PrintWriter(text));result.putString("stream",text.toString());finish(1,result);

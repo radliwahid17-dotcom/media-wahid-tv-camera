@@ -49,11 +49,12 @@ if not a.run_only:
 if not a.build_only:
     run(a.adb, 'shell', 'am', 'force-stop', 'tv.mediawahid.camerapro')
     run(a.adb, 'install', '-r', test_apk)
-    result = subprocess.check_output([a.adb, 'shell', 'am', 'instrument', '-w',
+    result = subprocess.check_output([a.adb, 'shell', 'am', 'instrument', '-w', '-r',
         'tv.mediawahid.camerapro.logotest/.LogoInstrumentation'], text=True, stderr=subprocess.STDOUT, timeout=600)
     print(result)
     assert 'LOGO_RENDER_PASS' in result and 'INSTRUMENTATION_CODE: -1' in result, result
-    run(a.adb, 'pull', '/sdcard/Android/data/tv.mediawahid.camerapro/files/logo-evidence', root / 'artifacts')
-    report = json.loads((root / 'artifacts/logo-evidence/logo-device.json').read_text())
+    report_line = next(line for line in result.splitlines() if line.startswith('INSTRUMENTATION_RESULT: report='))
+    report = json.loads(report_line.split('=', 1)[1])
     assert report['result'] == 'passed' and report['frames'] == 32
     (root / 'artifacts/logo-device.json').write_text(json.dumps(report, indent=2) + '\n')
+    run(a.adb, 'pull', '/sdcard/Pictures/MediaWahidLogoValidation', root / 'artifacts/logo-evidence')
