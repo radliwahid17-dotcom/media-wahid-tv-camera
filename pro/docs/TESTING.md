@@ -27,6 +27,26 @@ Unit test gate tidak menggunakan kamera dan tidak membuktikan video kontinu.
 CI memuat build/lint/test/struktur dan tujuh cold launch; hasil run aktual harus
 dibaca sebelum menyatakan CI berhasil.
 
+## Bukti CI
+
+[Run 38749402616](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/runs/38749402616)
+pada commit `bb2439d` selesai dengan status **Success**. Job build lulus
+kompilasi/lint/10 unit test/struktur APK dan mengunggah APK. Job install-launch
+lulus tujuh cold launch Android 11 dan 37 assertion adapter state dari APK final.
+
+[Unduh artifact APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/runs/38749402616/artifacts/11980741151).
+Artifact berupa arsip yang berisi APK, checksum dan provenance; login GitHub
+mungkin diperlukan. Kunci uji CI berbeda dari kunci uji cloud lokal.
+
+## Foto emulator
+
+Sampel pertama tersimpan dan dapat didekode sebagai JPEG 720×1280. Pemeriksaan
+visual file menunjukkan dua badge pengganti pada posisi kiri/kanan atas sesuai
+template 1. Artwork asli impor galeri tidak tersedia. Assertion Full HD pada uji
+foto gagal (aktual 720×1280); ini tidak diklaim lulus atau bukti kualitas Samsung.
+Skrip `photo_device_test.py` tetap mencatat semua kasus yang dapat dijalankan dan
+mengembalikan kegagalan bila assertion Full HD tidak terpenuhi.
+
 ## Matriks regresi wajib pada Samsung
 
 Catat model, Android, orientasi, template, lama video, storage dan suhu. Simpan

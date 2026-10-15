@@ -14,6 +14,7 @@ a = p.parse_args()
 root = Path(__file__).resolve().parents[1]
 output = root / 'artifacts/photo-evidence'
 output.mkdir(parents=True, exist_ok=True)
+last_tree = None
 
 
 def adb(*args):
@@ -21,12 +22,14 @@ def adb(*args):
 
 
 def ui():
+    global last_tree
     adb('shell', 'uiautomator', 'dump', '/sdcard/wahid-photo-test.xml')
-    return ET.fromstring(adb('shell', 'cat', '/sdcard/wahid-photo-test.xml'))
+    last_tree = ET.fromstring(adb('shell', 'cat', '/sdcard/wahid-photo-test.xml'))
+    return last_tree
 
 
 def click(description):
-    tree = ui()
+    tree = last_tree if last_tree is not None else ui()
     node = next(n for n in tree.iter('node') if n.get('content-desc') == description)
     assert node.get('enabled') == 'true', description + ' disabled'
     x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.get('bounds')))
@@ -37,7 +40,8 @@ def ready(front):
     for _ in range(12):
         tree = ui()
         text = ' '.join(n.get('text', '') for n in tree.iter('node'))
-        if 'Ready · Watermarked photo' in text and ('FRONT' if front else 'REAR') in text:
+        shutter = next((n for n in tree.iter('node') if n.get('content-desc') == 'Take photo with watermarks'), None)
+        if 'PHOTO' in text and ('FRONT' if front else 'REAR') in text and shutter is not None and shutter.get('enabled') == 'true':
             return
         time.sleep(1)
     raise AssertionError('Photo camera not ready: ' + text)
@@ -71,12 +75,14 @@ for front, template in [(False, 1), (False, 2), (True, 2), (True, 1)]:
     assert local.stat().st_size > 1000
     metadata = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', local], text=True))
     stream = metadata['streams'][0]
-    assert {stream['width'], stream['height']} == {1080, 1920}, stream
+    full_hd = {stream['width'], stream['height']} == {1080, 1920}
     outcomes.append({'front': front, 'template': template, 'gallery_file': remote,
-                     'width': stream['width'], 'height': stream['height'], 'capture': 'passed'})
+                     'width': stream['width'], 'height': stream['height'], 'capture': 'passed',
+                     'full_hd_assertion': 'passed' if full_hd else 'failed'})
     print(json.dumps(outcomes[-1]), flush=True)
     ready(front)
 (root / 'artifacts/photo-device.json').write_text(json.dumps({
     'outcomes': outcomes,
     'limitation': 'Original gallery artwork is absent; photos use baseline replacement badges. Visual inspection recorded separately.',
 }, indent=2) + '\n')
+assert all(x['full_hd_assertion'] == 'passed' for x in outcomes), 'Photos saved, but Full HD resolution assertion failed; see photo-device.json'

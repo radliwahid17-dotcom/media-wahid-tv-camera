@@ -14,6 +14,7 @@ sdk = Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT'])
 badging = subprocess.check_output([sdk / 'build-tools/36.0.0/aapt', 'dump', 'badging', apk], text=True)
 assert "package: name='tv.mediawahid.camerapro' versionCode='3' versionName='1.0.2'" in badging
 assert "launchable-activity: name='tv.mediawahid.camerapro.MainActivity'" in badging
+assert 'application-debuggable' not in badging, 'Final APK must use release manifest settings'
 with zipfile.ZipFile(baseline) as old, zipfile.ZipFile(apk) as new:
     assert new.testzip() is None
     preserved = [n for n in old.namelist() if n not in ('AndroidManifest.xml', 'classes3.dex')]

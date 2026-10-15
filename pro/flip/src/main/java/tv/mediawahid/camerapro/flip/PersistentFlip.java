@@ -182,6 +182,7 @@ public final class PersistentFlip {
         OriginalAccess.field(service, "camera", bound);
         Camera current = bound;
         PreviewView view = ((WeakReference<PreviewView>) OriginalAccess.field(service, "previewView")).get();
+        WeakReference<PreviewView> viewReference = new WeakReference<>(view);
         timeout = () -> {
             if (gate.current(token)) rollback(service, token, new IllegalStateException("Camera/preview readiness timeout"));
         };
@@ -197,14 +198,15 @@ public final class PersistentFlip {
                     return;
                 }
                 opened = cameraState.getType() == CameraState.Type.OPEN;
-                if (opened && (view == null || view.getPreviewStreamState().getValue() == PreviewView.StreamState.STREAMING)) {
-                    complete(service, front, token, view);
+                PreviewView currentView = viewReference.get();
+                if (opened && (currentView == null || currentView.getPreviewStreamState().getValue() == PreviewView.StreamState.STREAMING)) {
+                    complete(service, front, token, currentView);
                 }
             } catch (Exception e) { rollback(service, token, e); }
         };
         streamObserver = stream -> {
             if (opened && stream == PreviewView.StreamState.STREAMING && gate.current(token)) {
-                try { complete(service, front, token, view); }
+                try { complete(service, front, token, viewReference.get()); }
                 catch (Exception e) { rollback(service, token, e); }
             }
         };
@@ -226,6 +228,9 @@ public final class PersistentFlip {
     private void complete(Object service, boolean front, long token, PreviewView view) throws Exception {
         if (!gate.current(token)) return;
         if (timeout != null) main.removeCallbacks(timeout);
+        timeout = null;
+        if (view != null && streamObserver != null) view.getPreviewStreamState().removeObserver(streamObserver);
+        streamObserver = null;
         // Keep the original pre-Android-13 preview correction and non-mirrored recording.
         if (view != null) view.setScaleX(android.os.Build.VERSION.SDK_INT >= 33 || !front ? 1f : -1f);
         ExposureState exposure = bound.getCameraInfo().getExposureState();
@@ -274,6 +279,7 @@ public final class PersistentFlip {
     private void clearObservers() {
         Object service = owner.get();
         if (timeout != null) main.removeCallbacks(timeout);
+        timeout = null;
         if (bound != null) {
             if (cameraObserver != null) bound.getCameraInfo().getCameraState().removeObserver(cameraObserver);
             if (service instanceof LifecycleOwner) {
