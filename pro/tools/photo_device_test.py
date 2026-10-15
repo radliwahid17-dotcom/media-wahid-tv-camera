@@ -33,7 +33,8 @@ def ui():
 
 def click(description):
     tree = last_tree if last_tree is not None else ui()
-    node = next(n for n in tree.iter('node') if n.get('content-desc') == description)
+    node = next((n for n in tree.iter('node') if n.get('content-desc') == description), None)
+    assert node is not None, description + ' missing; UI: ' + repr([(n.get('text'), n.get('content-desc')) for n in tree.iter('node') if n.get('text') or n.get('content-desc')])
     assert node.get('enabled') == 'true', description + ' disabled'
     x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.get('bounds')))
     adb('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))

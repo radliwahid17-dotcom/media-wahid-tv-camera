@@ -71,7 +71,7 @@ jobs:
           target: default
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back emulated -camera-front emulated
-          script: cd pro && python3 tools/smoke_device.py && python3 tools/device_state_test.py && python3 tools/logo_device_test.py --run-only && adb shell svc wifi disable && adb shell svc data disable && adb shell am start -W -n tv.mediawahid.camerapro/.MainActivity && python3 tools/photo_device_test.py --allow-resolution-fallback
+          script: cd pro && python3 tools/runtime_suite.py
       - name: Publish validation results
         if: always()
         run: |
@@ -99,3 +99,4 @@ jobs:
             pro/artifacts/logo-evidence/
             pro/artifacts/photo-device.json
             pro/artifacts/photo-evidence/
+            pro/artifacts/runtime-stage-*.log
