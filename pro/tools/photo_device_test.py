@@ -85,6 +85,9 @@ for front, template in [(False, 1), (False, 2), (True, 2), (True, 1)]:
         ready(True)
     click('Template 1: Media Wahid TV and mosque logos' if template == 1 else 'Template 2: Media Wahid TV logo only')
     ready(front)
+    stage = ('front' if front else 'rear') + '-template-' + str(template)
+    with (output / (stage + '-preview.png')).open('wb') as screenshot:
+        subprocess.run([a.adb, 'exec-out', 'screencap', '-p'], stdout=screenshot, check=True, timeout=90)
     old = files()
     click('Take photo with watermarks')
     saved = set()
@@ -94,7 +97,7 @@ for front, template in [(False, 1), (False, 2), (True, 2), (True, 1)]:
         time.sleep(1)
     assert len(saved) == 1, 'Expected one saved JPEG: ' + repr(saved)
     remote = saved.pop()
-    local = output / (('front' if front else 'rear') + '-template-' + str(template) + '.jpg')
+    local = output / (stage + '.jpg')
     adb('pull', remote, str(local))
     assert local.stat().st_size > 1000
     metadata = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', local], text=True))

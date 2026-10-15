@@ -53,12 +53,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Photo pixel inspection dependency
+        run: python3 -m pip install Pillow==11.3.0
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Seven cold launches, state adapter and 32 logo rendering cases on Android 11
+      - name: Install, launch, render and capture watermarked photos offline on Android 11
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -66,7 +71,7 @@ jobs:
           target: default
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back emulated -camera-front emulated
-          script: cd pro && python3 tools/smoke_device.py && python3 tools/device_state_test.py && python3 tools/logo_device_test.py --run-only
+          script: cd pro && python3 tools/smoke_device.py && python3 tools/device_state_test.py && python3 tools/logo_device_test.py --run-only && adb shell svc wifi disable && adb shell svc data disable && adb shell am start -W -n tv.mediawahid.camerapro/.MainActivity && python3 tools/photo_device_test.py --allow-resolution-fallback
       - name: Upload runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,3 +82,5 @@ jobs:
             pro/artifacts/device-state.json
             pro/artifacts/logo-device.json
             pro/artifacts/logo-evidence/
+            pro/artifacts/photo-device.json
+            pro/artifacts/photo-evidence/
