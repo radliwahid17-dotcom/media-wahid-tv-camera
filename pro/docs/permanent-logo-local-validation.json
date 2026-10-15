@@ -1,0 +1,83 @@
+{
+  "source_commit": "65f24e2",
+  "package": "tv.mediawahid.camerapro",
+  "version_name": "1.0.3",
+  "version_code": 4,
+  "apk_sha256": "7603b2ca10419925dffb7ec15511b638dbcfa278f0dc026cb76e756fa60fcef2",
+  "build": "passed",
+  "lint_issues": 0,
+  "unit_tests": {
+    "tests": "10",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0",
+    "timestamp": "2026-10-15T22:56:36.650Z"
+  },
+  "apk_structure_and_original_entries": {
+    "passed": true,
+    "preserved_byte_identical": 480
+  },
+  "native_renderer": {
+    "result": "passed",
+    "assertions": 145,
+    "frames": 32,
+    "evidence": "permanent-logo-native.json"
+  },
+  "native_state_adapter": {
+    "result": "passed",
+    "assertions": 37,
+    "scope": "Actual APK state classes; not physical camera or audio"
+  },
+  "local_launch_limit": "First cold launch exceeded Android wait timeout under CPU emulation; process remained alive and crash buffer had no FATAL EXCEPTION. System UI ANR dialog blocked first photo test. Not counted as a passed seven-launch run.",
+  "not_tested": [
+    "Physical Samsung",
+    "Encoded video with permanent logos",
+    "Recording flips and microphone continuity",
+    "Pause/resume recording",
+    "90-minute recording"
+  ],
+  "real_photo_example": {
+    "result": "passed",
+    "source": "One rear-camera template A photo from installed final local APK",
+    "dimensions": [
+      720,
+      1280
+    ],
+    "media_logo_pixel_error": 15.258,
+    "mosque_logo_pixel_error": 39.992,
+    "limit": 45,
+    "evidence": "permanent-logo-example.jpg",
+    "preview": "permanent-logo-preview.png",
+    "full_hd": "Not achieved by this emulator rear camera; baseline fallback retained"
+  },
+  "rear_camera_templates": {
+    "result": "passed",
+    "template_a": {
+      "width": 720,
+      "height": 1280,
+      "media_logo_pixel_error": 15.258,
+      "mosque_logo_pixel_error": 39.992
+    },
+    "template_b": {
+      "width": 720,
+      "height": 1280,
+      "media_logo_pixel_error": 15.258,
+      "absent_mosque_pixel_error": 155.784
+    },
+    "network": "Wi-Fi and mobile data disabled",
+    "scope": "Two actual rear-camera JPEGs. Remaining local front cases stopped after equivalent complete CI suite passed."
+  },
+  "ci": {
+    "run": "https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/runs/38822833059",
+    "source_commit": "8b6585a",
+    "status": "Success",
+    "cold_launches": 7,
+    "state_assertions": 37,
+    "native_renderer_frames": 32,
+    "native_renderer_assertions": 145,
+    "camera_photo_cases": 4,
+    "camera_photo_scope": "Offline rear A/rear B/front B/front A; real JPEG decode and template artwork pixels. Resolution fallback allowed, not an FHD guarantee.",
+    "apk_artifact_id": "12012933592",
+    "runtime_evidence_artifact_id": "12013928766"
+  }
+}

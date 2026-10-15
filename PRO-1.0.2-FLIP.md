@@ -1,5 +1,8 @@
 # Perbaikan Media Wahid TV Camera Pro 1.0.1
 
+Revisi terbaru dengan logo permanen: [laporan Pro 1.0.3](pro/docs/PERMANENT-LOGOS.md).
+Bagian berikut merupakan riwayat build flip 1.0.2.
+
 Permintaan ini menargetkan **Pro 1.0.1** (`tv.mediawahid.camerapro`). Source pada
 main commit `aea71ac` di repositori ini adalah v5.0.4 (`tv.mediawahid.camera`),
 dengan UI dan arsitektur berbeda. Source Kotlin Pro tidak ditemukan pada branch

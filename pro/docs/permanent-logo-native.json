@@ -1,0 +1,328 @@
+{
+  "result": "passed",
+  "assertions": 145,
+  "frames": 32,
+  "cases": [
+    {
+      "template": 1,
+      "width": 640,
+      "height": 480,
+      "rotation": 0,
+      "front_mirrored_input": false,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 1,
+      "width": 640,
+      "height": 480,
+      "rotation": 0,
+      "front_mirrored_input": true,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 1,
+      "width": 640,
+      "height": 480,
+      "rotation": 90,
+      "front_mirrored_input": false,
+      "different_pixels": 5854,
+      "significant_pixels": 305,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 1,
+      "width": 640,
+      "height": 480,
+      "rotation": 90,
+      "front_mirrored_input": true,
+      "different_pixels": 5854,
+      "significant_pixels": 305,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 1,
+      "width": 640,
+      "height": 480,
+      "rotation": 180,
+      "front_mirrored_input": false,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 1,
+      "width": 640,
+      "height": 480,
+      "rotation": 180,
+      "front_mirrored_input": true,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 1,
+      "width": 640,
+      "height": 480,
+      "rotation": 270,
+      "front_mirrored_input": false,
+      "different_pixels": 5854,
+      "significant_pixels": 306,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 1,
+      "width": 640,
+      "height": 480,
+      "rotation": 270,
+      "front_mirrored_input": true,
+      "different_pixels": 5854,
+      "significant_pixels": 306,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 2,
+      "width": 640,
+      "height": 480,
+      "rotation": 0,
+      "front_mirrored_input": false,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 2,
+      "width": 640,
+      "height": 480,
+      "rotation": 0,
+      "front_mirrored_input": true,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 2,
+      "width": 640,
+      "height": 480,
+      "rotation": 90,
+      "front_mirrored_input": false,
+      "different_pixels": 3629,
+      "significant_pixels": 244,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 2,
+      "width": 640,
+      "height": 480,
+      "rotation": 90,
+      "front_mirrored_input": true,
+      "different_pixels": 3629,
+      "significant_pixels": 244,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 2,
+      "width": 640,
+      "height": 480,
+      "rotation": 180,
+      "front_mirrored_input": false,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 2,
+      "width": 640,
+      "height": 480,
+      "rotation": 180,
+      "front_mirrored_input": true,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 2,
+      "width": 640,
+      "height": 480,
+      "rotation": 270,
+      "front_mirrored_input": false,
+      "different_pixels": 3627,
+      "significant_pixels": 246,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 2,
+      "width": 640,
+      "height": 480,
+      "rotation": 270,
+      "front_mirrored_input": true,
+      "different_pixels": 3627,
+      "significant_pixels": 246,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 1,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 0,
+      "front_mirrored_input": false,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 1,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 0,
+      "front_mirrored_input": true,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 1,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 90,
+      "front_mirrored_input": false,
+      "different_pixels": 28060,
+      "significant_pixels": 587,
+      "max_channel_delta": 16
+    },
+    {
+      "template": 1,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 90,
+      "front_mirrored_input": true,
+      "different_pixels": 28060,
+      "significant_pixels": 587,
+      "max_channel_delta": 16
+    },
+    {
+      "template": 1,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 180,
+      "front_mirrored_input": false,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 1,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 180,
+      "front_mirrored_input": true,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 1,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 270,
+      "front_mirrored_input": false,
+      "different_pixels": 28062,
+      "significant_pixels": 588,
+      "max_channel_delta": 16
+    },
+    {
+      "template": 1,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 270,
+      "front_mirrored_input": true,
+      "different_pixels": 28062,
+      "significant_pixels": 588,
+      "max_channel_delta": 16
+    },
+    {
+      "template": 2,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 0,
+      "front_mirrored_input": false,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 2,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 0,
+      "front_mirrored_input": true,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 2,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 90,
+      "front_mirrored_input": false,
+      "different_pixels": 16531,
+      "significant_pixels": 177,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 2,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 90,
+      "front_mirrored_input": true,
+      "different_pixels": 16531,
+      "significant_pixels": 177,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 2,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 180,
+      "front_mirrored_input": false,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 2,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 180,
+      "front_mirrored_input": true,
+      "different_pixels": 0,
+      "significant_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "template": 2,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 270,
+      "front_mirrored_input": false,
+      "different_pixels": 16532,
+      "significant_pixels": 178,
+      "max_channel_delta": 15
+    },
+    {
+      "template": 2,
+      "width": 1920,
+      "height": 1080,
+      "rotation": 270,
+      "front_mirrored_input": true,
+      "different_pixels": 16532,
+      "significant_pixels": 178,
+      "max_channel_delta": 15
+    }
+  ],
+  "scope": "Installed final APK asset loading and original OverlayEffect callback with Android Bitmap/Canvas; synthetic frames, not camera video/audio or physical Samsung"
+}

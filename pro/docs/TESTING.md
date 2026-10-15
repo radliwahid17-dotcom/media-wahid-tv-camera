@@ -1,5 +1,8 @@
 # Bukti dan prosedur pengujian
 
+Revisi logo permanen 1.0.3: lihat [PERMANENT-LOGOS.md](PERMANENT-LOGOS.md).
+Bukti 1.0.2 di bawah adalah riwayat dan tidak membuktikan logo permanen.
+
 ## Hasil cloud yang dilakukan
 
 - Gradle 8.13 / AGP 8.13.0 / JDK 21: kompilasi delta dan rebuild APK lulus.

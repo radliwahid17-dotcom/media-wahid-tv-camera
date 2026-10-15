@@ -27,7 +27,7 @@ Gradle wrapper memverifikasi checksum distribusi Gradle.
 Workflow [Pro 1.0.3 Permanent Logos APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/workflows/pro-flip.yml) menjalankan build,
 lint delta Java, 10 unit test, pemeriksaan struktur/resource, upload artifact, lalu
 tujuh cold launch, 37 assertion adapter state, dan 32 kasus renderer logo pada
-emulator Android 11. Lint tidak mengaudit ulang source
+emulator Android 11, kemudian memeriksa empat foto offline dari kamera depan/belakang. Lint tidak mengaudit ulang source
 aplikasi asli yang tidak tersedia. Run CI yang belum dijalankan tidak dianggap lulus.
 
 ## Perbaikan
@@ -81,8 +81,15 @@ Jangan memasukkan key atau password ke repositori.
 python3 tools/smoke_device.py --adb /path/to/adb
 python3 tools/device_state_test.py /path/to/adb
 python3 tools/logo_device_test.py --adb /path/to/adb
+python3 -m pip install Pillow==11.3.0
+python3 tools/photo_device_test.py --adb /path/to/adb --allow-resolution-fallback
 ```
 
-Skrip ini menguji instalasi dan tujuh peluncuran ulang, bukan hasil kamera.
+Smoke test menguji instalasi dan tujuh peluncuran ulang. Renderer test memakai
+frame sintetis; photo test memeriksa pixel artwork pada JPEG hasil kamera.
+`--allow-resolution-fallback` menerima resolusi kamera emulator untuk pengujian
+logo, tetapi tetap mencatat assertion FHD yang gagal. Ia tidak membuktikan kualitas Samsung.
 Prosedur regresi Samsung dan status bukti ada di [docs/TESTING.md](docs/TESTING.md).
 Tanpa uji media yang lulus, APK belum dinyatakan memenuhi seluruh definition of done.
+
+Hasil revisi logo permanen dan unduhan APK final: [docs/PERMANENT-LOGOS.md](docs/PERMANENT-LOGOS.md).
