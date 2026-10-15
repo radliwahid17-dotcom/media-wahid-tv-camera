@@ -101,15 +101,15 @@ for front, template in [(False, 1), (False, 2), (True, 2), (True, 1)]:
     local = output / (stage + '.jpg')
     adb('pull', remote, str(local))
     assert local.stat().st_size > 1000
-    metadata = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', local], text=True))
-    stream = metadata['streams'][0]
-    full_hd = {stream['width'], stream['height']} == {1080, 1920}
     with Image.open(local) as image:
+        assert image.format == 'JPEG', 'Expected a real JPEG from ImageCapture'
+        width, height = image.size
         photo = image.convert('RGB')
         media_error = logo_error(photo, 'logo_media_wahid_tv.png', True)
         mosque_error = logo_error(photo, 'logo_masjid.png', False)
+    full_hd = {width, height} == {1080, 1920}
     outcomes.append({'front': front, 'template': template, 'gallery_file': remote,
-                     'width': stream['width'], 'height': stream['height'], 'capture': 'passed',
+                     'width': width, 'height': height, 'capture': 'passed',
                      'media_logo_pixel_error': media_error, 'mosque_logo_pixel_error': mosque_error,
                      'logos': 'passed' if media_error < 45 and ((mosque_error < 45) if template == 1 else (mosque_error > 45)) else 'failed',
                      'full_hd_assertion': 'passed' if full_hd else 'failed'})
