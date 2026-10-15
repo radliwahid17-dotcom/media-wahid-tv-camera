@@ -29,23 +29,39 @@ dibaca sebelum menyatakan CI berhasil.
 
 ## Bukti CI
 
-[Run 38749402616](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/runs/38749402616)
-pada commit `bb2439d` selesai dengan status **Success**. Job build lulus
+[Run 38752321823](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/runs/38752321823)
+pada commit `3abe30d` selesai dengan status **Success**. Job build lulus
 kompilasi/lint/10 unit test/struktur APK dan mengunggah APK. Job install-launch
 lulus tujuh cold launch Android 11 dan 37 assertion adapter state dari APK final.
 
-[Unduh artifact APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/runs/38749402616/artifacts/11980741151).
+[Unduh artifact APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/runs/38752321823/artifacts/11981902784).
 Artifact berupa arsip yang berisi APK, checksum dan provenance; login GitHub
 mungkin diperlukan. Kunci uji CI berbeda dari kunci uji cloud lokal.
 
 ## Foto emulator
 
-Sampel pertama tersimpan dan dapat didekode sebagai JPEG 720×1280. Pemeriksaan
-visual file menunjukkan dua badge pengganti pada posisi kiri/kanan atas sesuai
-template 1. Artwork asli impor galeri tidak tersedia. Assertion Full HD pada uji
-foto gagal (aktual 720×1280); ini tidak diklaim lulus atau bukti kualitas Samsung.
-Skrip `photo_device_test.py` tetap mencatat semua kasus yang dapat dijalankan dan
-mengembalikan kegagalan bila assertion Full HD tidak terpenuhi.
+Empat foto dari APK dengan kode aplikasi pada commit `bb2439d` tersimpan dan
+dapat didekode. Perubahan setelah commit tersebut hanya menyentuh callback
+recording, tanpa mengubah alur foto; sampel ini tidak diklaim sebagai pengulangan
+uji foto pada setiap APK berikutnya. Idle flip belakang → depan berhasil.
+
+| Kamera | Template | JPEG | Capture/penyimpanan | Assertion Full HD |
+|---|---|---|---|---|
+| Belakang | Dua logo | 720×1280 | PASS | FAIL |
+| Belakang | Satu logo | 720×1280 | PASS | FAIL |
+| Depan | Satu logo | 1080×1920 | PASS | PASS |
+| Depan | Dua logo | 1080×1920 | PASS | PASS |
+
+Pemeriksaan visual empat file menunjukkan dua badge di kiri/kanan atas untuk
+template 1 dan hanya badge kanan atas untuk template 2. Teks tidak terbalik;
+posisi dan ukuran relatif konsisten. Artwork asli impor galeri tidak tersedia.
+Uji foto keseluruhan mengembalikan exit 1 karena dua assertion Full HD gagal;
+ini tidak diklaim lulus atau bukti kualitas Samsung. Bukti:
+[hasil JSON](cloud-photo-results.json) dan [empat JPEG](photo-evidence/).
+
+Build/lint/unit test dan pemeriksaan class state tidak memvalidasi hasil video,
+kontinuitas audio, pause/resume recording, orientasi landscape, exposure Samsung,
+performa termal/memory 90 menit, ataupun rollback akibat kegagalan hardware.
 
 ## Matriks regresi wajib pada Samsung
 

@@ -1,0 +1,43 @@
+{
+  "outcomes": [
+    {
+      "front": false,
+      "template": 1,
+      "gallery_file": "/sdcard/Pictures/Media Wahid TV/MWTV_2026-10-15_142559_881.jpg",
+      "width": 720,
+      "height": 1280,
+      "capture": "passed",
+      "full_hd_assertion": "failed"
+    },
+    {
+      "front": false,
+      "template": 2,
+      "gallery_file": "/sdcard/Pictures/Media Wahid TV/MWTV_2026-10-15_142819_029.jpg",
+      "width": 720,
+      "height": 1280,
+      "capture": "passed",
+      "full_hd_assertion": "failed"
+    },
+    {
+      "front": true,
+      "template": 2,
+      "gallery_file": "/sdcard/Pictures/Media Wahid TV/MWTV_2026-10-15_143056_056.jpg",
+      "width": 1080,
+      "height": 1920,
+      "capture": "passed",
+      "full_hd_assertion": "passed"
+    },
+    {
+      "front": true,
+      "template": 1,
+      "gallery_file": "/sdcard/Pictures/Media Wahid TV/MWTV_2026-10-15_143310_265.jpg",
+      "width": 1080,
+      "height": 1920,
+      "capture": "passed",
+      "full_hd_assertion": "passed"
+    }
+  ],
+  "limitation": "Original gallery artwork is absent; photos use baseline replacement badges. Visual inspection recorded separately.",
+  "apk_source_revision": "bb2439d",
+  "visual_inspection": "Both cameras: template 1 has readable badges at top left/right; template 2 has only the top-right badge. Original imported artwork unavailable."
+}

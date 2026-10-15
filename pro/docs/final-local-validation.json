@@ -1,0 +1,12 @@
+{
+  "application_source_revision": "3abe30d",
+  "apk_sha256": "339b2e2dad110dcd1754d161f1131d494766f180479e13cd52ef52491a4fef78",
+  "package": "tv.mediawahid.camerapro",
+  "version": "1.0.2",
+  "version_code": 3,
+  "local_final_install": "passed",
+  "local_final_cold_launch": "passed",
+  "app_crash_buffer": "no AndroidRuntime FATAL EXCEPTION observed",
+  "video_flip_validation": "blocked: emulator camcorder profiles do not advertise required FHD SDR",
+  "samsung_physical": "not available"
+}
