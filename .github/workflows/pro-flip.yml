@@ -17,10 +17,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       - name: SDK prerequisites
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
       - name: Compile, Android lint, unit tests and reconstruct original APK
         run: ./gradlew --no-daemon :flip:lintDebug :flip:testDebugUnitTest assembleFlip
       - name: Validate identity, structure and preserved resources
