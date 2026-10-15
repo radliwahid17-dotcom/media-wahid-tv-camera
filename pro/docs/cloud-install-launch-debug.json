@@ -1,0 +1,49 @@
+{
+  "device": "Android SDK built for x86_64",
+  "android_api": "30",
+  "outcomes": [
+    {
+      "iteration": 1,
+      "install_launch": "passed",
+      "pid": "3026"
+    },
+    {
+      "iteration": 2,
+      "install_launch": "passed",
+      "pid": "3088"
+    },
+    {
+      "iteration": 3,
+      "install_launch": "passed",
+      "pid": "3154"
+    },
+    {
+      "iteration": 4,
+      "install_launch": "passed",
+      "pid": "3223"
+    },
+    {
+      "iteration": 5,
+      "install_launch": "passed",
+      "pid": "3283"
+    },
+    {
+      "iteration": 6,
+      "install_launch": "passed",
+      "pid": "3349"
+    },
+    {
+      "iteration": 7,
+      "install_launch": "passed",
+      "pid": "3429"
+    }
+  ],
+  "not_tested": [
+    "photo",
+    "video",
+    "flip",
+    "watermark output",
+    "microphone continuity",
+    "90 minutes"
+  ]
+}

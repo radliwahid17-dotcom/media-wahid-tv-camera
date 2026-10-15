@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'tv.mediawahid.camerapro.flip'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'tv.mediawahid.camerapro.flip.payload'
+        minSdk 30
+        targetSdk 36
+        versionCode 3
+        versionName '1.0.2'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint { abortOnError true; checkReleaseBuilds true }
+    testOptions { unitTests.returnDefaultValues = true }
+}
+dependencies {
+    implementation 'androidx.camera:camera-core:1.6.2'
+    implementation 'androidx.camera:camera-video:1.6.2'
+    implementation 'androidx.camera:camera-lifecycle:1.6.2'
+    implementation 'androidx.camera:camera-view:1.6.2'
+    implementation 'androidx.camera:camera-effects:1.6.2'
+    implementation 'androidx.lifecycle:lifecycle-service:2.9.4'
+    testImplementation 'junit:junit:4.13.2'
+}

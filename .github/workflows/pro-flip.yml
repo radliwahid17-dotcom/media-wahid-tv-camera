@@ -1,0 +1,74 @@
+name: Pro 1.0.2 FLIP APK
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+defaults:
+  run:
+    working-directory: pro
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: SDK prerequisites
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Compile, Android lint, unit tests and reconstruct original APK
+        run: ./gradlew --no-daemon :flip:lintDebug :flip:testDebugUnitTest assembleFlip
+      - name: Validate identity, structure and preserved resources
+        run: python3 tools/verify_apk.py
+      - name: Upload installable test APK and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: Media-Wahid-TV-Camera-Pro-1.0.2-FLIP
+          path: pro/artifacts/*
+          if-no-files-found: error
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-checks
+          path: |
+            pro/flip/build/reports/
+            pro/flip/build/test-results/
+  install-launch:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Media-Wahid-TV-Camera-Pro-1.0.2-FLIP
+          path: pro/artifacts
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Seven cold launches on Android 11
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back emulated -camera-front emulated
+          script: cd pro && python3 tools/smoke_device.py
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-launch-evidence
+          path: pro/artifacts/device-smoke.json
