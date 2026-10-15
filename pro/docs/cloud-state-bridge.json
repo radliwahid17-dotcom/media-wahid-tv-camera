@@ -1,0 +1,5 @@
+{
+  "result": "passed",
+  "assertions": 37,
+  "scope": "Actual Android CameraUiState copy adapter, recording locks, flip predicate, timer/bytes/audio preservation; no camera hardware exercised"
+}

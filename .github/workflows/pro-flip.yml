@@ -64,10 +64,12 @@ jobs:
           target: default
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back emulated -camera-front emulated
-          script: cd pro && python3 tools/smoke_device.py
+          script: cd pro && python3 tools/smoke_device.py && python3 tools/device_state_test.py
       - name: Upload runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: install-launch-evidence
-          path: pro/artifacts/device-smoke.json
+          path: |
+            pro/artifacts/device-smoke.json
+            pro/artifacts/device-state.json

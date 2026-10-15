@@ -13,6 +13,11 @@
   FATAL EXCEPTION aplikasi. System UI emulator sempat ANR saat emulasi CPU;
   hasil ini hanya memvalidasi peluncuran aplikasi, bukan kestabilan seluruh sistem.
 - Uji media/flip hasil video dan perangkat Samsung: belum diklaim lulus.
+- APK release (`debuggable=false`): instalasi dan tujuh cold launch lulus.
+- Adapter state dijalankan terhadap class asli APK pada Android melalui dalvikvm:
+  37 assertion lulus, termasuk preservasi seluruh component yang tidak diubah,
+  timer, byte, audio warning, lock dan predicate flip RECORDING/PAUSED/STARTING/STOPPING.
+  Ini memvalidasi adapter biner, bukan perpindahan kamera fisik.
 - Emulator menyediakan kamera depan/belakang tetapi profil camcorder hanya
   sampai 720p. Guard FHD SDR asli menolak mulai video dengan pesan yang terlihat.
   Karena itu flip recording/audio/output video belum dapat diuji di emulator ini;
