@@ -8,7 +8,7 @@ import time
 
 p = argparse.ArgumentParser()
 p.add_argument('--adb', default='adb')
-p.add_argument('--apk', default='artifacts/Media-Wahid-TV-Camera-Pro-1.0.2-FLIP.apk')
+p.add_argument('--apk', default='artifacts/Media-Wahid-TV-Camera-Pro-1.0.3-FLIP.apk')
 p.add_argument('--output', default='artifacts/device-smoke.json')
 a = p.parse_args()
 package = 'tv.mediawahid.camerapro'
@@ -19,7 +19,7 @@ def run(*args):
 
 
 assert run('shell', 'getprop', 'sys.boot_completed').strip() == '1', 'Android has not completed boot'
-run('install', '-r', a.apk)
+run('install', '--no-incremental', '-r', a.apk)
 for permission in ['CAMERA', 'RECORD_AUDIO']:
     run('shell', 'pm', 'grant', package, 'android.permission.' + permission)
 run('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')

@@ -11,12 +11,15 @@ import androidx.camera.core.CameraState;
 import androidx.camera.core.DynamicRange;
 import androidx.camera.core.ExposureState;
 import androidx.camera.core.Preview;
+import androidx.camera.core.ResolutionInfo;
+import androidx.camera.core.SurfaceRequest;
 import androidx.camera.core.UseCaseGroup;
 import androidx.camera.core.ViewPort;
 import androidx.camera.effects.OverlayEffect;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.video.Quality;
 import androidx.camera.video.Recorder;
+import androidx.camera.video.Recording;
 import androidx.camera.video.VideoCapture;
 import androidx.camera.view.PreviewView;
 import androidx.lifecycle.LifecycleOwner;
@@ -34,12 +37,18 @@ public final class PersistentFlip {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final FlipGate gate = new FlipGate();
     private Camera bound;
+    private long bindingId;
     private Observer<CameraState> cameraObserver;
     private Observer<PreviewView.StreamState> streamObserver;
+    private WeakReference<PreviewView> observedView = new WeakReference<>(null);
+    private final Map<Boolean, Float> exposureByLens = new HashMap<>();
     private Runnable timeout;
     private boolean previousFront;
     private boolean reverting;
     private boolean opened;
+    private boolean bindingFront;
+    private boolean waitingForEncoder;
+    private boolean stopQueued;
     private String failure;
 
     private PersistentFlip(Object service) { owner = new WeakReference<>(service); }
@@ -95,6 +104,56 @@ public final class PersistentFlip {
         }
     }
 
+    /** CameraX 1.6.2 asserts if stop races asynchronous encoder reconfiguration. */
+    public static void stopRecording(Object service) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            new Handler(Looper.getMainLooper()).post(() -> stopRecording(service));
+            return;
+        }
+        try {
+            PersistentFlip flip = INSTANCES.get(service);
+            if (flip == null || (!flip.gate.busy() && !flip.waitingForEncoder)) {
+                OriginalAccess.call(service, "stopRecordingOriginal");
+                return;
+            }
+            if (OriginalAccess.field(service, "recording") == null || flip.stopQueued) return;
+            flip.stopQueued = true;
+            Object phase = OriginalAccess.call(OriginalAccess.state(service), "getPhase");
+            OriginalAccess.publish(service, Map.of(3, phase.getClass().getField("STOPPING").get(null),
+                    22, "Saving MP4…"));
+            OriginalAccess.call(service, "updateNotification");
+            Log.i(TAG, "STOP queued until camera and video encoder are ready");
+        } catch (ReflectiveOperationException e) { Log.e(TAG, "Cannot queue STOP", e); }
+    }
+
+    /** Bytecode hook after the original Recorder.onConfigured returns successfully.
+     * No CameraX state machine, encoder or media settings are changed by the hook.
+     */
+    @android.annotation.SuppressLint("RestrictedApi")
+    public static void encoderReady(Object recorder, Object incomingRequest) {
+        SurfaceRequest request = (SurfaceRequest) incomingRequest;
+        new Handler(Looper.getMainLooper()).post(() -> {
+            for (Map.Entry<Object, PersistentFlip> entry : INSTANCES.entrySet()) {
+                Object service = entry.getKey();
+                PersistentFlip flip = entry.getValue();
+                try {
+                    VideoCapture<?> video = (VideoCapture<?>) OriginalAccess.field(service, "video");
+                    if (video == null || video.getOutput() != recorder || !flip.waitingForEncoder) continue;
+                    int lens = request.getCamera().getCameraInfo().getLensFacing();
+                    if ((lens == CameraSelector.LENS_FACING_FRONT) != flip.bindingFront) continue;
+                    flip.waitingForEncoder = false;
+                    Log.i(TAG, "Video encoder ready front=" + flip.bindingFront);
+                    PreviewView view = flip.observedView.get();
+                    if (flip.gate.busy() && flip.opened && (view == null
+                            || view.getPreviewStreamState().getValue() == PreviewView.StreamState.STREAMING)) {
+                        flip.complete(service, flip.bindingFront, flip.gate.token(), view);
+                    } else if (!flip.gate.busy()) flip.drainStop(service);
+                } catch (Exception e) { Log.e(TAG, "Encoder readiness callback", e); }
+                break;
+            }
+        });
+    }
+
     /** Injected before original Finalize handling and destruction to cancel stale callbacks. */
     public static void release(Object service) {
         PersistentFlip flip = INSTANCES.remove(service);
@@ -138,6 +197,12 @@ public final class PersistentFlip {
             report(service, "Pipeline kamera belum siap untuk flip.");
             return;
         }
+        Camera source = (Camera) OriginalAccess.field(service, "camera");
+        if (source != null) {
+            ExposureState exposure = source.getCameraInfo().getExposureState();
+            exposureByLens.put(previousFront, exposure.getExposureCompensationIndex()
+                    * exposure.getExposureCompensationStep().floatValue());
+        }
         long token = gate.begin();
         if (token < 0) return;
         reverting = false;
@@ -157,6 +222,8 @@ public final class PersistentFlip {
     private void bind(Object service, boolean front, long token) throws Exception {
         clearObservers();
         if (!gate.current(token) || OriginalAccess.field(service, "recording") == null) return;
+        bindingFront = front;
+        waitingForEncoder = true;
         LifecycleOwner lifecycle = (LifecycleOwner) service;
         ProcessCameraProvider provider = (ProcessCameraProvider) OriginalAccess.field(service, "provider");
         Preview preview = (Preview) OriginalAccess.field(service, "preview");
@@ -181,15 +248,23 @@ public final class PersistentFlip {
         bound = provider.bindToLifecycle(lifecycle, selector(front), group);
         OriginalAccess.field(service, "camera", bound);
         Camera current = bound;
+        long attempt = ++bindingId;
+        ResolutionInfo selected = video.getResolutionInfo();
+        if (selected == null || !FlipVideoSpec.fullHd(selected.getCropRect().width(), selected.getCropRect().height())) {
+            throw new IllegalStateException("Kamera tujuan tidak menghasilkan crop Full HD; kamera sebelumnya dipulihkan.");
+        }
+        restoreExposure(service, current, front, attempt);
         PreviewView view = ((WeakReference<PreviewView>) OriginalAccess.field(service, "previewView")).get();
         WeakReference<PreviewView> viewReference = new WeakReference<>(view);
+        observedView = viewReference;
         timeout = () -> {
             if (gate.current(token)) rollback(service, token, new IllegalStateException("Camera/preview readiness timeout"));
         };
-        main.postDelayed(timeout, 15000);
+        // Opening the capture graph includes asynchronous Full HD codec setup.
+        main.postDelayed(timeout, 60000);
         cameraObserver = cameraState -> {
             try {
-                if (bound != current || OriginalAccess.field(service, "recording") == null) return;
+                if (bound != current || bindingId != attempt || OriginalAccess.field(service, "recording") == null) return;
                 if (cameraState.getError() != null) {
                     if (gate.current(token)) rollback(service, token,
                             new IllegalStateException("Camera error " + cameraState.getError().getCode()));
@@ -205,7 +280,7 @@ public final class PersistentFlip {
             } catch (Exception e) { rollback(service, token, e); }
         };
         streamObserver = stream -> {
-            if (opened && stream == PreviewView.StreamState.STREAMING && gate.current(token)) {
+            if (bound == current && bindingId == attempt && opened && stream == PreviewView.StreamState.STREAMING && gate.current(token)) {
                 try { complete(service, front, token, viewReference.get()); }
                 catch (Exception e) { rollback(service, token, e); }
             }
@@ -213,7 +288,7 @@ public final class PersistentFlip {
         if (view != null) view.getPreviewStreamState().observe(lifecycle, streamObserver);
         current.getCameraInfo().getCameraState().observe(lifecycle, cameraObserver);
         current.getCameraInfo().getZoomState().observe(lifecycle, zoom -> {
-            if (bound != current || zoom == null) return;
+            if (bound != current || bindingId != attempt || zoom == null) return;
             Map<Integer, Object> changes = new HashMap<>();
             changes.put(8, zoom.getMinZoomRatio());
             changes.put(9, zoom.getMaxZoomRatio());
@@ -221,16 +296,33 @@ public final class PersistentFlip {
             update(service, changes);
         });
         current.getCameraInfo().getTorchState().observe(lifecycle, torch -> {
-            if (bound == current) update(service, Map.of(7, torch != null && torch == 1));
+            if (bound == current && bindingId == attempt) update(service, Map.of(7, torch != null && torch == 1));
         });
+    }
+
+    private void restoreExposure(Object service, Camera current, boolean front, long attempt) {
+        ExposureState exposure = current.getCameraInfo().getExposureState();
+        if (!exposure.isExposureCompensationSupported()) return;
+        float ev = exposureByLens.getOrDefault(front, exposureByLens.getOrDefault(previousFront, 0f));
+        int index = FlipVideoSpec.exposureIndex(ev, exposure.getExposureCompensationStep().floatValue(),
+                exposure.getExposureCompensationRange().getLower(), exposure.getExposureCompensationRange().getUpper());
+        com.google.common.util.concurrent.ListenableFuture<Integer> result =
+                current.getCameraControl().setExposureCompensationIndex(index);
+        result.addListener(() -> {
+            if (bound != current || bindingId != attempt) return;
+            try { update(service, Map.of(14, result.get())); }
+            catch (Exception e) { Log.w(TAG, "Brightness restore unavailable; manual control remains available", e); }
+        }, command -> main.post(command));
     }
 
     private void complete(Object service, boolean front, long token, PreviewView view) throws Exception {
         if (!gate.current(token)) return;
+        if (waitingForEncoder) return;
         if (timeout != null) main.removeCallbacks(timeout);
         timeout = null;
         if (view != null && streamObserver != null) view.getPreviewStreamState().removeObserver(streamObserver);
         streamObserver = null;
+        observedView.clear();
         // Keep the original pre-Android-13 preview correction and non-mirrored recording.
         if (view != null) view.setScaleX(android.os.Build.VERSION.SDK_INT >= 33 || !front ? 1f : -1f);
         ExposureState exposure = bound.getCameraInfo().getExposureState();
@@ -254,6 +346,19 @@ public final class PersistentFlip {
         OriginalAccess.publish(service, changes);
         Log.i(TAG, "Flip complete token=" + token + " front=" + front + " restored=" + reverting
                 + " recording=" + System.identityHashCode(OriginalAccess.field(service, "recording")));
+        drainStop(service);
+    }
+
+    private void drainStop(Object service) throws ReflectiveOperationException {
+        if (!stopQueued || waitingForEncoder || gate.busy()) return;
+        stopQueued = false;
+        Recording recording = (Recording) OriginalAccess.field(service, "recording");
+        if (recording == null) return;
+        // State already says STOPPING. Perform the original method's final actions
+        // after the new encoder has completed setup, without a pause/resume cycle.
+        Log.i(TAG, "Executing queued STOP on configured encoder");
+        recording.stop();
+        OriginalAccess.call(service, "updateNotification");
     }
 
     private void rollback(Object service, long token, Exception cause) {
@@ -262,7 +367,7 @@ public final class PersistentFlip {
         try {
             Object state = OriginalAccess.state(service);
             String phase = OriginalAccess.call(state, "getPhase").toString();
-            if ("IDLE".equals(phase) || "STOPPING".equals(phase)
+            if ("IDLE".equals(phase) || ("STOPPING".equals(phase) && !stopQueued)
                     || OriginalAccess.field(service, "recording") == null) {
                 gate.cancel();
                 clearObservers();
@@ -282,6 +387,7 @@ public final class PersistentFlip {
     }
 
     private void clearObservers() {
+        ++bindingId;
         Object service = owner.get();
         if (timeout != null) main.removeCallbacks(timeout);
         timeout = null;
@@ -292,13 +398,9 @@ public final class PersistentFlip {
                 bound.getCameraInfo().getTorchState().removeObservers((LifecycleOwner) service);
             }
         }
-        if (service != null && streamObserver != null) {
-            try {
-                Object reference = OriginalAccess.field(service, "previewView");
-                Object view = ((WeakReference<?>) reference).get();
-                if (view instanceof PreviewView) ((PreviewView) view).getPreviewStreamState().removeObserver(streamObserver);
-            } catch (ReflectiveOperationException e) { Log.e(TAG, "Preview observer cleanup", e); }
-        }
+        PreviewView view = observedView.get();
+        if (view != null && streamObserver != null) view.getPreviewStreamState().removeObserver(streamObserver);
+        observedView.clear();
         cameraObserver = null;
         streamObserver = null;
         bound = null;

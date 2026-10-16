@@ -19,6 +19,7 @@ public final class FlipGate {
 
     public boolean current(long token) { return busy && token == generation; }
     public boolean busy() { return busy; }
+    public long token() { return generation; }
     public void finish(long token) { if (current(token)) busy = false; }
     public void cancel() { busy = false; ++generation; }
 }

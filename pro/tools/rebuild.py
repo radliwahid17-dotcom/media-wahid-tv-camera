@@ -10,6 +10,7 @@ import subprocess
 import urllib.request
 import zipfile
 from patch_baseline import patch
+from logo_assets import artwork
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_SHA = '62afa607bd606479d18bda64a404ace76ca9d4fdb7c634043b7ba6efbf43c367'
@@ -61,16 +62,21 @@ def main():
     rebuilt = ROOT / 'build/rebuilt.apk'
     unsigned = ROOT / 'build/unsigned.apk'
     aligned = ROOT / 'build/aligned.apk'
-    final = output / 'Media-Wahid-TV-Camera-Pro-1.0.2-FLIP.apk'
+    final = output / 'Media-Wahid-TV-Camera-Pro-1.0.3-FLIP.apk'
     run(java, '-jar', apktool, 'b', '-p', framework, '-o', rebuilt, work)
     # Keep the original compiled resources and every unrelated DEX/native entry byte-for-byte.
     # APKTool normalizes resource qualifiers/nine-patches when rebuilding; those changes are unnecessary.
-    replacements = {'AndroidManifest.xml', 'classes3.dex'}
+    replacements = {'AndroidManifest.xml', 'classes.dex', 'classes3.dex'}
     with zipfile.ZipFile(baseline) as old, zipfile.ZipFile(rebuilt) as delta, \
             zipfile.ZipFile(unsigned, 'w') as result:
         for entry in old.infolist():
             result.writestr(entry, delta.read(entry.filename) if entry.filename in replacements else old.read(entry.filename))
         result.writestr('classes5.dex', delta.read('classes5.dex'), compress_type=zipfile.ZIP_STORED)
+        # Original WatermarkStore already supports bundled JPEGs as a fallback;
+        # gallery-imported logos and all saved settings retain their precedence.
+        for name, data in artwork().items():
+            assert name not in old.namelist(), 'Never replace a baseline asset'
+            result.writestr(name, data)
     run(build_tools / 'zipalign', '-P', '16', '-f', '4', unsigned, aligned)
     # Local/CI test signing identity stays outside Git; original private key is unavailable.
     signing = cache / 'signing'
@@ -95,9 +101,10 @@ def main():
     (output / (final.name + '.sha256')).write_text(sha(final) + '  ' + final.name + '\n')
     (output / 'provenance.json').write_text(json.dumps({
         'baseline_sha256': BASELINE_SHA, 'apk_sha256': sha(final),
-        'package': 'tv.mediawahid.camerapro', 'version_name': '1.0.2', 'version_code': 3,
+        'package': 'tv.mediawahid.camerapro', 'version_name': '1.0.3', 'version_code': 4,
         'method': 'APKTool baseline reconstruction + compiled Java delta',
         'signing': 'Test identity; not the original 1.0.1 key',
+        'bundled_artwork': {name: hashlib.sha256(data).hexdigest() for name, data in artwork().items()},
     }, indent=2) + '\n')
     print('APK:', final)
 
