@@ -8,6 +8,8 @@ tasks.register('assembleFlip', Exec) {
 tasks.register('validationClasspath') {
     dependsOn ':flip:compileDebugJavaWithJavac'
     doLast {
-        file('build/validation-classpath.txt').text = project(':flip').tasks.named('compileDebugJavaWithJavac').get().classpath.asPath
+        def output = file('build/validation-classpath.txt')
+        output.parentFile.mkdirs()
+        output.text = project(':flip').tasks.named('compileDebugJavaWithJavac').get().classpath.asPath
     }
 }
