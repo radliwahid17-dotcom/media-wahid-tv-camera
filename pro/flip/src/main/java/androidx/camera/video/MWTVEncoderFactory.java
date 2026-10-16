@@ -13,6 +13,11 @@ import tv.mediawahid.camerapro.flip.MuxerCadenceEncoder;
 @SuppressLint("RestrictedApi")
 public final class MWTVEncoderFactory {
     private MWTVEncoderFactory() {}
+    /** Keep the camera-side consumer alive while the user-paused Recorder stays paused. */
+    public static StreamInfo cameraActive(StreamInfo info) {
+        if(info.getId()==StreamInfo.STREAM_ID_ERROR)return info;
+        return StreamInfo.of(info.getId(),StreamInfo.StreamState.ACTIVE,info.getInProgressTransformationInfo());
+    }
     public static Recorder build(Recorder.Builder builder) {
         builder.setVideoEncoderFactory((executor,config,sessionType) -> {
             VideoEncoderConfig video=(VideoEncoderConfig)config;

@@ -11,6 +11,7 @@ import androidx.camera.core.impl.MutableStateObservable;
 import androidx.camera.core.impl.Timebase;
 import androidx.camera.video.EncoderProfilesResolver;
 import androidx.camera.video.MediaSpec;
+import androidx.camera.video.MWTVEncoderFactory;
 import androidx.camera.video.Recorder;
 import androidx.camera.video.StreamInfo;
 import androidx.camera.video.VideoCapabilities;
@@ -40,7 +41,7 @@ public final class StableVideoOutput implements VideoOutput {
         @Override public void onNewData(StreamInfo info) {
             if (info == null || closed) return;
             recorderStream = info;
-            if (!refreshing) stream.setState(info);
+            if (!refreshing) stream.setState(cameraStream(info));
         }
         @Override public void onError(Throwable failure) { error(failure); }
     };
@@ -63,6 +64,12 @@ public final class StableVideoOutput implements VideoOutput {
         renderer = new StableFrameRenderer(this::error);
         recorder.getStreamInfo().addObserver(command -> main.post(command), streamObserver);
     }
+    private StreamInfo cameraStream(StreamInfo info) {
+        // Recorder.pause() may publish INACTIVE. Our input still needs camera
+        // frames for preview/paused flips; mapping this graph state never resumes
+        // the actual Recorder, audio encoder or user recording timeline.
+        return active&&!stopping?MWTVEncoderFactory.cameraActive(info):info;
+    }
     public static VideoOutput wrap(Object service, Recorder recorder) {
         StableVideoOutput bridge = new StableVideoOutput(service, recorder);
         OWNERS.put(service, new WeakReference<>(bridge));
@@ -81,12 +88,15 @@ public final class StableVideoOutput implements VideoOutput {
     }
     public static void stopping(Object service) {
         StableVideoOutput bridge = find(service);
-        if (bridge != null) { bridge.stopping = true; bridge.renderer.stopPumping(); }
+        if (bridge != null) {
+            bridge.stopping = true; bridge.stream.setState(bridge.recorderStream); bridge.renderer.stopPumping();
+        }
     }
     public static void released(Object service) {
         StableVideoOutput bridge = find(service);
         if (bridge == null) return;
         bridge.active = false; bridge.stopping = false; bridge.renderer.stopPumping();
+        bridge.stream.setState(bridge.recorderStream);
         bridge.recorder.onSourceStateChanged(bridge.source);
         if (bridge.source == SourceState.INACTIVE) bridge.close();
     }
@@ -98,6 +108,7 @@ public final class StableVideoOutput implements VideoOutput {
         else if (event instanceof VideoRecordEvent.Finalize) {
             bridge.active = false;
             bridge.stopping = false;
+            bridge.stream.setState(bridge.recorderStream);
             bridge.renderer.stopPumping();
             if (bridge.source == SourceState.INACTIVE) bridge.close();
         }
@@ -130,7 +141,7 @@ public final class StableVideoOutput implements VideoOutput {
         bridge.stream.setState(bridge.idleStream);
         bridge.main.post(() -> {
             bridge.refreshing = false;
-            if (!bridge.closed) bridge.stream.setState(bridge.recorderStream);
+            if (!bridge.closed) bridge.stream.setState(bridge.cameraStream(bridge.recorderStream));
         });
         Log.i(TAG, "Refresh camera repeating surface; Recorder remains active");
     }
