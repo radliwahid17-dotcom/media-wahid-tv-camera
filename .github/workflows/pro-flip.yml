@@ -101,6 +101,11 @@ jobs:
                                      'frame_bridge_log': result.get('frame_bridge_log', []), 'scope': result['scope']}
                           notice = json.dumps(compact).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
                           print('::notice title=Encoded video evidence::' + notice)
+                          for session in result['sessions']:
+                              timings = session.get('flips', [])
+                              details = {key: session.get(key) for key in ['name', 'orientation', 'video', 'audio', 'manual_pause', 'watermark_pixels', 'animated_emulator_playback_difference']}
+                              details.update(result=result['result'], flips=len(timings), max_flip_ready_ms=max((x['ready_ms'] for x in timings), default=0))
+                              print('::notice title=Playback ' + session['name'] + '::' + json.dumps(details).replace('%', '%25'))
                   else:
                       summary.write('No result file; inspect failed step.\n\n')
           PY

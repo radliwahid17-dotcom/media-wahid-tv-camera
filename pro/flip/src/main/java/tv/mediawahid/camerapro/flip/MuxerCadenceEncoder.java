@@ -18,6 +18,9 @@ public final class MuxerCadenceEncoder extends EncoderImpl {
         super(executor,config,sessionType);
     }
     @Override public void setEncoderCallback(EncoderCallback callback,Executor executor) {
+        if(callback==null||callback==EncoderCallback.EMPTY){
+            super.setEncoderCallback(callback,executor);return;
+        }
         super.setEncoderCallback(new EncoderCallback() {
             private final MuxerTimestamp clock=new MuxerTimestamp();
             private long adjusted,maxAdjustment;
