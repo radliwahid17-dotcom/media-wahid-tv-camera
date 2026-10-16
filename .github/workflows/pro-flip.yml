@@ -21,7 +21,16 @@ jobs:
       - name: SDK prerequisites
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
       - name: Compile, Android lint, unit tests and reconstruct original APK
-        run: ./gradlew --no-daemon :flip:lintDebug :flip:testDebugUnitTest assembleFlip validationClasspath
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          result = subprocess.run(['./gradlew', '--no-daemon', ':flip:lintDebug', ':flip:testDebugUnitTest', 'assembleFlip', 'validationClasspath'], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+          print(result.stdout)
+          if result.returncode:
+              tail = '\n'.join(result.stdout.splitlines()[-55:]).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error title=Android build diagnostics::' + tail)
+          raise SystemExit(result.returncode)
+          PY
       - name: Validate identity, structure and preserved resources
         run: python3 tools/verify_apk.py
       - name: Build signed validation harness for the final APK
@@ -101,5 +110,6 @@ jobs:
             pro/artifacts/photo-evidence/
             pro/artifacts/video-device.json
             pro/artifacts/video-instrumentation.log
+            pro/artifacts/video-logcat.txt
             pro/artifacts/video-evidence/
             pro/artifacts/runtime-stage-*.log

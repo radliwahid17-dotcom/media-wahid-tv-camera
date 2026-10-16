@@ -211,7 +211,7 @@ final class StableFrameRenderer {
                 if (presented==0) firstPts=pts;
                 else maxPtsGap=Math.max(maxPtsGap,pts-lastPts);
                 lastPts=pts;presented++;
-                if (lastPresentedSerial==serial) repeated++;
+                if (waiting || lastPresentedSerial==serial) repeated++;
                 lastPresentedSerial=serial;
             }
             handler.postDelayed(tick,cadence.delayMillis(System.nanoTime()));
