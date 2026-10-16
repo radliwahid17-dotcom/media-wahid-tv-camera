@@ -55,6 +55,14 @@ def main():
         if source.is_dir():
             shutil.copytree(source, destination, dirs_exist_ok=True)
             copied += len(list(source.rglob('*.smali')))
+        # Two uniquely named package-access adapters use the pinned CameraX factory;
+        # never transplant or overwrite any original CameraX implementation class.
+        for adapter in ['androidx/camera/video/MWTVEncoderFactory',
+                        'androidx/camera/video/internal/encoder/MWTVRepeatingVideoConfig']:
+            for source_file in (directory / Path(adapter).parent).glob(Path(adapter).name + '*.smali'):
+                target = work / 'smali_classes5' / source_file.relative_to(directory)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_file, target)
     assert copied >= 4, 'Compiled flip classes missing'
     output = ROOT / 'artifacts'
     output.mkdir(exist_ok=True)

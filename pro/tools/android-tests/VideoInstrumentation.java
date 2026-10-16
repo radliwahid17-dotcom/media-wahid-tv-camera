@@ -39,6 +39,7 @@ public final class VideoInstrumentation extends Instrumentation {
     private int checks;
     private final JSONArray sessions=new JSONArray();
     private final JSONArray exports=new JSONArray();
+    private final JSONArray timingFailures=new JSONArray();
     private interface Work<T> {T run() throws Exception;}
     private <T> T main(Work<T> work) throws Exception {
         AtomicReference<T> result=new AtomicReference<>();AtomicReference<Throwable> error=new AtomicReference<>();
@@ -53,6 +54,7 @@ public final class VideoInstrumentation extends Instrumentation {
         throw new NoSuchMethodException(name);
     }
     private void check(boolean ok,String message){checks++;if(!ok)throw new AssertionError(message);}
+    private void timingCheck(boolean ok,String message){checks++;if(!ok)timingFailures.put(message);}
     private Object state() throws Exception{return call(service,"getSnapshot");}
     private Object value(String method) throws Exception{return main(()->call(state(),method));}
     private void publish(Map<Integer,Object> changes) throws Exception {
@@ -90,8 +92,9 @@ public final class VideoInstrumentation extends Instrumentation {
                 .setResolutionSelector(new ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
                 .setResolutionStrategy(new ResolutionStrategy(new Size(1280,720),ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)).build()).build();
             PreviewView view=(PreviewView)field(activity,"preview");preview.setSurfaceProvider(view.getSurfaceProvider());
-            Recorder recorder=new Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).setAspectRatio(AspectRatio.RATIO_16_9)
-                .setTargetVideoEncodingBitRate(16000000).build();
+            Recorder.Builder builder=new Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).setAspectRatio(AspectRatio.RATIO_16_9)
+                .setTargetVideoEncodingBitRate(16000000);
+            Recorder recorder=(Recorder)type("androidx.camera.video.MWTVEncoderFactory").getMethod("build",Recorder.Builder.class).invoke(null,builder);
             VideoOutput output=(VideoOutput)type("tv.mediawahid.camerapro.flip.StableVideoOutput").getMethod("wrap",Object.class,Recorder.class).invoke(null,service,recorder);
             VideoCapture<VideoOutput> video=new VideoCapture.Builder<>(output).setTargetRotation(rotation)
                 .setTargetFrameRate(new Range<>(30,30)).setDynamicRange(DynamicRange.SDR).setMirrorMode(0).build();
@@ -171,11 +174,11 @@ public final class VideoInstrumentation extends Instrumentation {
             for(int i=1;i<pts.size();i++){check(pts.get(i)>pts.get(i-1),"Unique forward PTS "+mime);maxGap=Math.max(maxGap,pts.get(i)-pts.get(i-1));}
             long span=pts.get(pts.size()-1)-pts.get(0);
             JSONObject info=new JSONObject().put("mime",mime).put("samples",pts.size()).put("duration_us",span).put("max_pts_gap_us",maxGap);
-            if(mime.startsWith("video/")){videoDuration=span;info.put("width",format.getInteger(MediaFormat.KEY_WIDTH)).put("height",format.getInteger(MediaFormat.KEY_HEIGHT));check(maxGap<250000,"No large encoder timestamp gap: "+maxGap);report.put("video",info);}
-            else {audioDuration=span;check(maxGap<100000,"No large encoded microphone packet gap: "+maxGap);report.put("audio",info);}
+            if(mime.startsWith("video/")){videoDuration=span;info.put("width",format.getInteger(MediaFormat.KEY_WIDTH)).put("height",format.getInteger(MediaFormat.KEY_HEIGHT));timingCheck(maxGap<250000,name+": encoder timestamp gap <250000 us: actual="+maxGap);report.put("video",info);}
+            else {audioDuration=span;timingCheck(maxGap<100000,name+": microphone packet gap <100000 us: actual="+maxGap);report.put("audio",info);}
         }
         extractor.release();check(videoDuration>0&&audioDuration>0,"Both video and microphone tracks");
-        check(Math.abs(videoDuration-audioDuration)<500000,"A/V duration agreement");
+        timingCheck(Math.abs(videoDuration-audioDuration)<500000,name+": A/V duration difference <500000 us: actual="+Math.abs(videoDuration-audioDuration));
         MediaMetadataRetriever retriever=new MediaMetadataRetriever();retriever.setDataSource(getTargetContext(),uri);
         JSONArray frames=new JSONArray();
         for(int i=1;i<=3;i++) {
@@ -204,9 +207,12 @@ public final class VideoInstrumentation extends Instrumentation {
             record("stress-template-b",2,quick?15:180,quick?2:20,false);
             record("manual-pause",1,quick?8:12,1,true);
             record("landscape-template-a",1,quick?8:15,2,false,true);
-            JSONObject report=new JSONObject().put("result","passed").put("assertions",checks).put("quick",quick).put("sessions",sessions).put("exports",exports)
+            boolean passed=timingFailures.length()==0;
+            JSONObject report=new JSONObject().put("result",passed?"passed":"failed-timing").put("timing_failures",timingFailures).put("assertions",checks).put("quick",quick).put("sessions",sessions).put("exports",exports)
                 .put("scope","Real emulator camera and microphone tracks through original Pro service/Recorder/OverlayEffect/PersistentFlip; HD fixture only because emulator FHD profile is unavailable. Production FHD unchanged. Silent emulator microphone does not validate physical speech or Samsung audio sync. 90 minutes not tested.");
-            result.putString("report",report.toString());result.putString("stream","VIDEO_CONTINUITY_PASS\n");finish(-1,result);
+            // Collect every session before failing timing assertions, so a cadence
+            // failure cannot prevent the 20-flip, pause and landscape checks.
+            result.putString("report",report.toString());result.putString("stream",passed?"VIDEO_CONTINUITY_PASS\n":"VIDEO_CONTINUITY_FAIL\n");finish(passed?-1:1,result);
         } catch(Throwable e) {
             StringWriter text=new StringWriter();e.printStackTrace(new PrintWriter(text));result.putString("stream",text.toString());
             result.putString("partial",new JSONObject().toString());finish(1,result);

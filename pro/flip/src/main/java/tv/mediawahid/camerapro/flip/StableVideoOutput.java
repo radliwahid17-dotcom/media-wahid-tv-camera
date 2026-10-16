@@ -106,6 +106,11 @@ public final class StableVideoOutput implements VideoOutput {
     static boolean handoff(Object service, boolean front, Runnable firstFrame) {
         StableVideoOutput bridge = find(service);
         if (bridge == null || bridge.closed) return false;
+        // Let the new graph start with no in-progress encoder transform. The GL
+        // bridge owns that normalization; applying CameraX compensation again
+        // would allocate/reset a second processing pipeline during the handoff.
+        bridge.refreshing = true;
+        bridge.stream.setState(bridge.idleStream);
         bridge.renderer.handoff(front, () -> bridge.main.post(firstFrame));
         return true;
     }

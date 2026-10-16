@@ -17,9 +17,12 @@ finally:
     print('\n'.join(bridge[-35:]))
 (r/'artifacts/video-instrumentation.log').write_text(result)
 print(result)
-assert 'VIDEO_CONTINUITY_PASS' in result and 'INSTRUMENTATION_CODE: -1' in result,result+'\nBridge diagnostics:\n'+'\n'.join([line for line in bridge if not re.search(r':\s+at ',line)][-22:])
-line=next(line for line in result.splitlines() if line.startswith('INSTRUMENTATION_RESULT: report='))
-report=json.loads(line.split('=',1)[1]);assert report['result']=='passed' and len(report['sessions'])==4
+diagnostics='\nBridge diagnostics:\n'+'\n'.join([line for line in bridge if not re.search(r':\s+at ',line)][-22:])
+native_passed='VIDEO_CONTINUITY_PASS' in result and 'INSTRUMENTATION_CODE: -1' in result
+line=next((line for line in result.splitlines() if line.startswith('INSTRUMENTATION_RESULT: report=')),None)
+assert line is not None,result+diagnostics
+report=json.loads(line.split('=',1)[1]);assert len(report['sessions'])==4
+report['native_result']=report['result']
 report['frame_bridge_log']=[line for line in log.splitlines() if 'MWTV.FrameBridge' in line and any(term in line for term in ['New camera frame','Handoff composited','Session frames=','Frame bridge error'])]
 report['result']='watermark-validation-pending'
 (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
@@ -47,6 +50,7 @@ for session in report['sessions']:
         report['result']='failed-watermark-pixels'
         (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
         raise AssertionError(evidence)
-report['result']='passed'
+report['result']='passed' if native_passed else 'failed-native-timing'
 (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
+assert native_passed,json.dumps(report.get('timing_failures',[]))+diagnostics
 print('PASS: encoded video/audio timestamp continuity, playback and actual watermark pixels. Physical Samsung still required.')

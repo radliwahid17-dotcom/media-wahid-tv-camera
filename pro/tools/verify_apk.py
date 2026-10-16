@@ -25,7 +25,7 @@ with zipfile.ZipFile(baseline) as old, zipfile.ZipFile(apk) as new:
         assert old.read(name) == new.read(name), f'Original artwork/native artifact changed: {name}'
     assert 'classes5.dex' in new.namelist(), 'Flip payload absent'
     dex = b''.join(new.read(n) for n in new.namelist() if n.endswith('.dex'))
-    for name in [b'PersistentFlip', b'asPersistentRecording', b'WatermarkPipeline', b'WatermarkGeometry', b'WatermarkStore', b'StableVideoOutput', b'StableFrameRenderer']:
+    for name in [b'PersistentFlip', b'asPersistentRecording', b'WatermarkPipeline', b'WatermarkGeometry', b'WatermarkStore', b'StableVideoOutput', b'StableFrameRenderer', b'MWTVEncoderFactory', b'MWTVRepeatingVideoConfig']:
         assert name in dex, f'Missing component: {name}'
     logos = json.loads((root / 'assets/artwork.json').read_text())['logos']
     assert sorted('assets/watermarks/' + n for n in logos) == sorted(n for n in new.namelist() if n.startswith('assets/watermarks/'))

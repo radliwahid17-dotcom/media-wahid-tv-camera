@@ -217,6 +217,10 @@ final class StableFrameRenderer {
                     if (mix>=1f) finishHandoff();
                 } else draw(latestTexture,false,identity,1f);
                 checkGl();
+                // Stamp after rendering, so a slow GPU upload cannot arrive behind
+                // buffers repeated by the encoder's native surface source.
+                long updated=cadence.presentation(System.nanoTime());
+                if (updated!=FrameCadence.NOT_DUE) pts=updated;
                 require(EGLExt.eglPresentationTimeANDROID(display,window,pts),"Encoder presentation timestamp");
                 require(EGL14.eglSwapBuffers(display,window),"Encoder swap");
                 if (presented==0) firstPts=pts;

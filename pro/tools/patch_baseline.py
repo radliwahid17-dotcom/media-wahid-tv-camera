@@ -33,6 +33,8 @@ def patch(decoded: Path):
 .end method
 """
     bridge = PACKAGE + 'flip/StableVideoOutput;'
+    code = once(code, '    invoke-virtual {v14}, Landroidx/camera/video/Recorder$Builder;->build()Landroidx/camera/video/Recorder;',
+                '    invoke-static {v14}, Landroidx/camera/video/MWTVEncoderFactory;->build(Landroidx/camera/video/Recorder$Builder;)Landroidx/camera/video/Recorder;')
     constructor = '    check-cast v4, Landroidx/camera/video/VideoOutput;'
     code = once(code, constructor, f'''    invoke-static {{v1, v14}}, {bridge}->wrap(Ljava/lang/Object;Landroidx/camera/video/Recorder;)Landroidx/camera/video/VideoOutput;
     move-result-object v4''')
