@@ -32,10 +32,23 @@ def patch(decoded: Path):
     return-void
 .end method
 """
+    bridge = PACKAGE + 'flip/StableVideoOutput;'
+    constructor = '    check-cast v4, Landroidx/camera/video/VideoOutput;'
+    code = once(code, constructor, f'''    invoke-static {{v1, v14}}, {bridge}->wrap(Ljava/lang/Object;Landroidx/camera/video/Recorder;)Landroidx/camera/video/VideoOutput;
+    move-result-object v4''')
+    code = once(code, '    check-cast v7, Landroidx/camera/video/Recorder;',
+                f'''    invoke-static {{v7}}, {bridge}->unwrap(Landroidx/camera/video/VideoOutput;)Landroidx/camera/video/Recorder;
+    move-result-object v7''')
     site = "    invoke-virtual {v3, v6, v7}, Landroidx/camera/video/PendingRecording;->start("
     code = once(code, site,
                 "    invoke-virtual {v3}, Landroidx/camera/video/PendingRecording;->asPersistentRecording()Landroidx/camera/video/PendingRecording;\n\n"
-                "    move-result-object v3\n\n" + site)
+                "    move-result-object v3\n\n"
+                + f"    invoke-static/range {{p0 .. p0}}, {bridge}->prepare(Ljava/lang/Object;)V\n\n" + site)
+    for signature, hook in [('.method public final stopRecording()V', 'stopping'),
+                            ('.method private final releaseRecordingResources()V', 'released')]:
+        code, count = re.subn(re.escape(signature) + r'(\n    \.locals \d+\n)',
+                             lambda m: m.group(0) + f'\n    invoke-static/range {{p0 .. p0}}, {bridge}->{hook}(Ljava/lang/Object;)V\n', code)
+        assert count == 1, hook
     # Finalize/start failure and service teardown must release observer callbacks.
     for signature in [".method private final releaseRecordingResources()V", ".method public onDestroy()V"]:
         pattern = re.escape(signature) + r"(\n    \.locals \d+\n)"
@@ -120,8 +133,8 @@ def patch(decoded: Path):
     store.write_text(code)
     config = decoded / "apktool.yml"
     code = config.read_text()
-    code = once(code, "versionCode: 2", "versionCode: 4")
-    code = once(code, "versionName: 1.0.1", "versionName: 1.0.3")
+    code = once(code, "versionCode: 2", "versionCode: 5")
+    code = once(code, "versionName: 1.0.1", "versionName: 1.0.4")
     config.write_text(code)
     manifest = decoded / 'AndroidManifest.xml'
     manifest.write_text(once(manifest.read_text(), 'android:debuggable="true"', 'android:debuggable="false"'))

@@ -29,10 +29,11 @@ if not a.run_only:
         (work / directory).mkdir(parents=True, exist_ok=True)
     sources = root / 'tools/android-tests'
     library = sdk / 'platforms/android-36/android.jar'
-    run(java / 'javac', '-source', '17', '-target', '17', '-cp', library, '-d', work / 'stubs', sources / 'Frame.java')
-    run(java / 'javac', '-source', '17', '-target', '17', '-cp', str(library) + os.pathsep + str(work / 'stubs'),
-        '-d', work / 'classes', sources / 'LogoInstrumentation.java')
-    run(tools / 'd8', '--min-api', '30', '--lib', library, '--classpath', work / 'stubs', '--output', work / 'dex',
+    classpath = (root / 'build/validation-classpath.txt').read_text().strip()
+    run(java / 'javac', '-source', '17', '-target', '17', '-cp', str(library) + os.pathsep + classpath,
+        '-d', work / 'classes', sources / 'LogoInstrumentation.java', sources / 'VideoInstrumentation.java')
+    dependencies = [arg for path in classpath.split(os.pathsep) for arg in ['--classpath', path]]
+    run(tools / 'd8', '--min-api', '30', '--lib', library, *dependencies, '--output', work / 'dex',
         *sorted((work / 'classes').rglob('*.class')))
     unsigned = work / 'unsigned.apk'
     run(tools / 'aapt', 'package', '-f', '-M', sources / 'AndroidManifest.xml', '-I', library, '-F', unsigned)

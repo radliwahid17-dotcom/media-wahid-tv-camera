@@ -2,4 +2,5 @@
     <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="36" />
     <application android:label="Pro logo validation" android:debuggable="true" />
     <instrumentation android:name="tv.mediawahid.camerapro.logotest.LogoInstrumentation" android:targetPackage="tv.mediawahid.camerapro" />
+    <instrumentation android:name="tv.mediawahid.camerapro.logotest.VideoInstrumentation" android:targetPackage="tv.mediawahid.camerapro" />
 </manifest>

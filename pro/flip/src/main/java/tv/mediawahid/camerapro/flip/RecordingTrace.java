@@ -8,6 +8,7 @@ public final class RecordingTrace {
     private RecordingTrace() { }
     public static void event(Object service, Object incoming) {
         VideoRecordEvent event = (VideoRecordEvent) incoming;
+        StableVideoOutput.event(service, event);
         if (event instanceof VideoRecordEvent.Status) return;
         try {
             String detail = event instanceof VideoRecordEvent.Finalize

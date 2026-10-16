@@ -82,7 +82,7 @@ run(java / 'javac', '-source', '17', '-target', '17', '-cp', work / 'stub', '-d'
 run(sdk / 'build-tools/36.0.0/d8', '--min-api', '30', '--output', work / 'dex',
     '--lib', sdk / 'platforms/android-36/android.jar', '--classpath', work / 'stub',
     *sorted((work / 'classes').rglob('*.class')))
-run(adb, 'push', root / 'artifacts/Media-Wahid-TV-Camera-Pro-1.0.3-PERMANENT-LOGOS.apk', '/data/local/tmp/wahid-state.apk')
+run(adb, 'push', root / 'artifacts/Media-Wahid-TV-Camera-Pro-1.0.4-SEAMLESS.apk', '/data/local/tmp/wahid-state.apk')
 run(adb, 'push', work / 'dex/classes.dex', '/data/local/tmp/wahid-state.dex')
 result = subprocess.check_output([adb, 'shell', 'dalvikvm', '-cp',
     '/data/local/tmp/wahid-state.apk:/data/local/tmp/wahid-state.dex',

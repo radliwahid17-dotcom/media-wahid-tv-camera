@@ -25,10 +25,15 @@ import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import android.util.Size;
+import android.util.Range;
 
 /** Adds a recording-only path; original idle/photo binding and the entire UI remain intact. */
 public final class PersistentFlip {
     private static final String TAG = "MWTV.PersistentFlip";
+    private static final ExecutorService PREFLIGHT = Executors.newSingleThreadExecutor(r -> new Thread(r, "MWTV-Capabilities"));
     private static final Map<Object, PersistentFlip> INSTANCES = new WeakHashMap<>();
     private final WeakReference<Object> owner;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -40,6 +45,9 @@ public final class PersistentFlip {
     private boolean previousFront;
     private boolean reverting;
     private boolean opened;
+    private boolean videoReady;
+    private boolean bridged;
+    private int bindingSequence;
     private String failure;
 
     private PersistentFlip(Object service) { owner = new WeakReference<>(service); }
@@ -121,23 +129,19 @@ public final class PersistentFlip {
         ProcessCameraProvider provider = (ProcessCameraProvider) OriginalAccess.field(service, "provider");
         previousFront = OriginalAccess.bool(state, "getFrontCamera");
         CameraSelector selector = selector(!previousFront);
-        // Capability validation happens before releasing the current camera.
-        if (provider == null || !provider.hasCamera(selector)) {
-            report(service, "Kamera tujuan tidak tersedia; rekaman tetap berjalan.");
-            return;
-        }
-        CameraInfo target = selector.filter(provider.getAvailableCameraInfos()).get(0);
-        if (!Recorder.getVideoCapabilities(target).getSupportedQualities(DynamicRange.SDR).contains(Quality.FHD)
-                || target.getSupportedFrameRateRanges().stream().noneMatch(range -> range.contains(30))) {
-            report(service, "Kamera tujuan tidak mendukung Full HD 30 FPS; rekaman tetap berjalan.");
-            return;
-        }
         if (OriginalAccess.field(service, "video") == null
                 || OriginalAccess.field(service, "preview") == null
                 || OriginalAccess.field(service, "overlay") == null) {
             report(service, "Pipeline kamera belum siap untuk flip.");
             return;
         }
+        Object recording = OriginalAccess.field(service, "recording");
+        VideoCapture<?> capture = (VideoCapture<?>) OriginalAccess.field(service, "video");
+        if (capture.getResolutionInfo() == null) { report(service, "Resolusi kamera belum siap."); return; }
+        Size size = capture.getResolutionInfo().getCropRect().width() >= capture.getResolutionInfo().getCropRect().height()
+                ? new Size(capture.getResolutionInfo().getCropRect().width(), capture.getResolutionInfo().getCropRect().height())
+                : new Size(capture.getResolutionInfo().getCropRect().height(), capture.getResolutionInfo().getCropRect().width());
+        Range<Integer> fps = capture.getTargetFrameRate();
         long token = gate.begin();
         if (token < 0) return;
         reverting = false;
@@ -147,10 +151,42 @@ public final class PersistentFlip {
         changes.put(22, "Switching camera…");
         changes.put(23, null);
         OriginalAccess.publish(service, changes);
-        Log.i(TAG, "Flip begin token=" + token + " targetFront=" + !previousFront
-                + " recording=" + System.identityHashCode(OriginalAccess.field(service, "recording")));
-        try { bind(service, !previousFront, token); }
-        catch (Exception e) { rollback(service, token, e); }
+        Log.i(TAG, "Flip preflight token=" + token + " targetFront=" + !previousFront
+                + " recording=" + System.identityHashCode(recording) + " size=" + size + " fps=" + fps);
+        // Query potentially expensive encoder/camera capabilities off the UI thread. CameraX's
+        // bind/unbind API itself is main-thread-only and opens the camera asynchronously.
+        PREFLIGHT.execute(() -> {
+            String reason = null;
+            try {
+                if (provider == null || !provider.hasCamera(selector)) reason = "Kamera tujuan tidak tersedia";
+                else {
+                    CameraInfo target = selector.filter(provider.getAvailableCameraInfos()).get(0);
+                    Quality quality = size.equals(new Size(1920,1080)) ? Quality.FHD
+                            : size.equals(new Size(1280,720)) ? Quality.HD
+                            : size.equals(new Size(3840,2160)) ? Quality.UHD : Quality.SD;
+                    if (!Recorder.getVideoCapabilities(target).getSupportedQualities(DynamicRange.SDR).contains(quality))
+                        reason = "Kamera tujuan tidak mendukung kualitas rekaman aktif " + quality;
+                    else if (target.getSupportedFrameRateRanges().stream().noneMatch(range ->
+                            range.contains(fps.getLower()) && range.contains(fps.getUpper())))
+                        reason = "Kamera tujuan tidak mendukung frame rate aktif " + fps;
+                }
+            } catch (Exception error) { reason = "Pemeriksaan kamera gagal: " + error.getMessage(); }
+            String rejected = reason;
+            main.post(() -> {
+                if (!gate.current(token)) return;
+                try {
+                    if (OriginalAccess.field(service, "recording") != recording
+                            || "STOPPING".equals(OriginalAccess.call(OriginalAccess.state(service), "getPhase").toString())) {
+                        gate.cancel(); return;
+                    }
+                    if (rejected != null) {
+                        gate.finish(token); update(service, Map.of(5, true));
+                        report(service, rejected + "; kamera aktif dan rekaman dipertahankan."); return;
+                    }
+                    bind(service, !previousFront, token);
+                } catch (Exception error) { rollback(service, token, error); }
+            });
+        });
     }
 
     @SuppressWarnings("unchecked")
@@ -175,18 +211,26 @@ public final class PersistentFlip {
                 .setScaleType(ViewPort.FILL_CENTER).build();
         UseCaseGroup group = new UseCaseGroup.Builder().setViewPort(viewPort)
                 .addUseCase(preview).addUseCase(video).addEffect(effect).build();
-        // No stop(), pause(), Recorder construction, output creation, effect close or timer reset.
+        // Arm before unbind: a fast new producer must not outrun the readiness fence.
+        int sequence = ++bindingSequence;
+        videoReady = false;
+        PreviewView view = ((WeakReference<PreviewView>) OriginalAccess.field(service, "previewView")).get();
+        WeakReference<PreviewView> viewReference = new WeakReference<>(view);
+        bridged = StableVideoOutput.handoff(service, front, () -> {
+            if (!gate.current(token) || bindingSequence != sequence) return;
+            videoReady = true;
+            tryComplete(service, front, token, viewReference.get());
+        });
+        // Recorder and its encoder SurfaceRequest are retained by StableVideoOutput.
         provider.unbind(preview, video);
         opened = false;
         bound = provider.bindToLifecycle(lifecycle, selector(front), group);
         OriginalAccess.field(service, "camera", bound);
         Camera current = bound;
-        PreviewView view = ((WeakReference<PreviewView>) OriginalAccess.field(service, "previewView")).get();
-        WeakReference<PreviewView> viewReference = new WeakReference<>(view);
         timeout = () -> {
             if (gate.current(token)) rollback(service, token, new IllegalStateException("Camera/preview readiness timeout"));
         };
-        main.postDelayed(timeout, 15000);
+        main.postDelayed(timeout, 8000);
         cameraObserver = cameraState -> {
             try {
                 if (bound != current || OriginalAccess.field(service, "recording") == null) return;
@@ -199,15 +243,12 @@ public final class PersistentFlip {
                 }
                 opened = cameraState.getType() == CameraState.Type.OPEN;
                 PreviewView currentView = viewReference.get();
-                if (opened && (currentView == null || currentView.getPreviewStreamState().getValue() == PreviewView.StreamState.STREAMING)) {
-                    complete(service, front, token, currentView);
-                }
+                tryComplete(service, front, token, currentView);
             } catch (Exception e) { rollback(service, token, e); }
         };
         streamObserver = stream -> {
             if (opened && stream == PreviewView.StreamState.STREAMING && gate.current(token)) {
-                try { complete(service, front, token, viewReference.get()); }
-                catch (Exception e) { rollback(service, token, e); }
+                tryComplete(service, front, token, viewReference.get());
             }
         };
         if (view != null) view.getPreviewStreamState().observe(lifecycle, streamObserver);
@@ -223,6 +264,14 @@ public final class PersistentFlip {
         current.getCameraInfo().getTorchState().observe(lifecycle, torch -> {
             if (bound == current) update(service, Map.of(7, torch != null && torch == 1));
         });
+    }
+
+    private void tryComplete(Object service, boolean front, long token, PreviewView view) {
+        boolean streamReady = bridged ? videoReady : view == null
+                || view.getPreviewStreamState().getValue() == PreviewView.StreamState.STREAMING;
+        if (!opened || !streamReady || !gate.current(token)) return;
+        try { complete(service, front, token, view); }
+        catch (Exception error) { rollback(service, token, error); }
     }
 
     private void complete(Object service, boolean front, long token, PreviewView view) throws Exception {
@@ -283,6 +332,7 @@ public final class PersistentFlip {
 
     private void clearObservers() {
         Object service = owner.get();
+        if (service != null) StableVideoOutput.cancelHandoff(service);
         if (timeout != null) main.removeCallbacks(timeout);
         timeout = null;
         if (bound != null) {

@@ -8,7 +8,7 @@ import time
 
 p = argparse.ArgumentParser()
 p.add_argument('--adb', default='adb')
-p.add_argument('--apk', default='artifacts/Media-Wahid-TV-Camera-Pro-1.0.3-PERMANENT-LOGOS.apk')
+p.add_argument('--apk', default='artifacts/Media-Wahid-TV-Camera-Pro-1.0.4-SEAMLESS.apk')
 p.add_argument('--output', default='artifacts/device-smoke.json')
 a = p.parse_args()
 package = 'tv.mediawahid.camerapro'

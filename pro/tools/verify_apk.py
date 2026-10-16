@@ -11,11 +11,11 @@ import struct
 import zlib
 
 root = Path(__file__).resolve().parents[1]
-apk = Path(sys.argv[1]) if len(sys.argv) > 1 else root / 'artifacts/Media-Wahid-TV-Camera-Pro-1.0.3-PERMANENT-LOGOS.apk'
+apk = Path(sys.argv[1]) if len(sys.argv) > 1 else root / 'artifacts/Media-Wahid-TV-Camera-Pro-1.0.4-SEAMLESS.apk'
 baseline = root / 'Media-Wahid-TV-Camera-Pro-1.0.1.apk'
 sdk = Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT'])
 badging = subprocess.check_output([sdk / 'build-tools/36.0.0/aapt', 'dump', 'badging', apk], text=True)
-assert "package: name='tv.mediawahid.camerapro' versionCode='4' versionName='1.0.3'" in badging
+assert "package: name='tv.mediawahid.camerapro' versionCode='5' versionName='1.0.4'" in badging
 assert "launchable-activity: name='tv.mediawahid.camerapro.MainActivity'" in badging
 assert 'application-debuggable' not in badging, 'Final APK must use release manifest settings'
 with zipfile.ZipFile(baseline) as old, zipfile.ZipFile(apk) as new:
@@ -25,7 +25,7 @@ with zipfile.ZipFile(baseline) as old, zipfile.ZipFile(apk) as new:
         assert old.read(name) == new.read(name), f'Original artwork/native artifact changed: {name}'
     assert 'classes5.dex' in new.namelist(), 'Flip payload absent'
     dex = b''.join(new.read(n) for n in new.namelist() if n.endswith('.dex'))
-    for name in [b'PersistentFlip', b'asPersistentRecording', b'WatermarkPipeline', b'WatermarkGeometry', b'WatermarkStore']:
+    for name in [b'PersistentFlip', b'asPersistentRecording', b'WatermarkPipeline', b'WatermarkGeometry', b'WatermarkStore', b'StableVideoOutput', b'StableFrameRenderer']:
         assert name in dex, f'Missing component: {name}'
     logos = json.loads((root / 'assets/artwork.json').read_text())['logos']
     assert sorted('assets/watermarks/' + n for n in logos) == sorted(n for n in new.namelist() if n.startswith('assets/watermarks/'))

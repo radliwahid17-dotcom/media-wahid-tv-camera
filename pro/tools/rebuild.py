@@ -61,7 +61,7 @@ def main():
     rebuilt = ROOT / 'build/rebuilt.apk'
     unsigned = ROOT / 'build/unsigned.apk'
     aligned = ROOT / 'build/aligned.apk'
-    final = output / 'Media-Wahid-TV-Camera-Pro-1.0.3-PERMANENT-LOGOS.apk'
+    final = output / 'Media-Wahid-TV-Camera-Pro-1.0.4-SEAMLESS.apk'
     artwork = json.loads((ROOT / 'assets/artwork.json').read_text())
     for name, info in artwork['logos'].items():
         assert sha(ROOT / 'assets/watermarks' / name) == info['png_sha256'], f'Unexpected artwork: {name}'
@@ -101,7 +101,7 @@ def main():
     (output / (final.name + '.sha256')).write_text(sha(final) + '  ' + final.name + '\n')
     (output / 'provenance.json').write_text(json.dumps({
         'baseline_sha256': BASELINE_SHA, 'apk_sha256': sha(final),
-        'package': 'tv.mediawahid.camerapro', 'version_name': '1.0.3', 'version_code': 4,
+        'package': 'tv.mediawahid.camerapro', 'version_name': '1.0.4', 'version_code': 5,
         'method': 'APKTool baseline reconstruction + compiled Java delta',
         'signing': 'Test identity; not the original 1.0.1 key',
         'artwork': artwork,
