@@ -136,6 +136,7 @@ public final class StableVideoOutput implements VideoOutput {
         Log.i(TAG, "Camera surface requested size=" + request.getResolution() + " lens="
                 + request.getCamera().getCameraInfo().getLensFacing() + " closed=" + closed);
         if (closed) { request.willNotProvideSurface(); return; }
+        refreshWatermarks();
         // Only the first request reaches Recorder. Subsequent camera requests replace GPU inputs.
         boolean first = encoderRequest == null;
         if (first) {
@@ -151,6 +152,21 @@ public final class StableVideoOutput implements VideoOutput {
             persistent.updateTransformationInfo(info);
             renderer.initialRotation(info.getRotationDegrees());
         } : null);
+    }
+    private void refreshWatermarks() {
+        Object service = owner.get();
+        if (service == null) return;
+        try {
+            Object pipeline = OriginalAccess.field(service, "pipeline");
+            android.os.HandlerThread overlayThread = (android.os.HandlerThread) OriginalAccess.field(service, "overlayThread");
+            // The original effect recreates its canvas for a new input. Its DrawKey may
+            // otherwise match when both sensors have the same rotation/size. Queue after
+            // that input setup and invalidate the artwork snapshot, retaining geometry.
+            new Handler(overlayThread.getLooper()).post(() -> {
+                try { OriginalAccess.call(pipeline, "reloadLogos"); }
+                catch (ReflectiveOperationException failure) { error(failure); }
+            });
+        } catch (ReflectiveOperationException failure) { error(failure); }
     }
     @Override public void onSourceStateChanged(SourceState state) {
         source = state;

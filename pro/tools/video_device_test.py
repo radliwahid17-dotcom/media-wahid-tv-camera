@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the installed final service with real emulator HD camera streams, not a new camera app."""
-import argparse,json,os,subprocess
+import argparse,json,re,subprocess
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--adb',default='adb');p.add_argument('--quick',action='store_true');a=p.parse_args()
 r=Path(__file__).resolve().parents[1]
@@ -17,10 +17,11 @@ finally:
     print('\n'.join(bridge[-35:]))
 (r/'artifacts/video-instrumentation.log').write_text(result)
 print(result)
-assert 'VIDEO_CONTINUITY_PASS' in result and 'INSTRUMENTATION_CODE: -1' in result,result+'\nBridge diagnostics:\n'+'\n'.join([line for line in bridge if ' at ' not in line][-22:])
+assert 'VIDEO_CONTINUITY_PASS' in result and 'INSTRUMENTATION_CODE: -1' in result,result+'\nBridge diagnostics:\n'+'\n'.join([line for line in bridge if not re.search(r':\s+at ',line)][-22:])
 line=next(line for line in result.splitlines() if line.startswith('INSTRUMENTATION_RESULT: report='))
-report=json.loads(line.split('=',1)[1]);assert report['result']=='passed' and len(report['sessions'])==3
+report=json.loads(line.split('=',1)[1]);assert report['result']=='passed' and len(report['sessions'])==4
 report['frame_bridge_log']=[line for line in log.splitlines() if 'MWTV.FrameBridge' in line and any(term in line for term in ['New camera frame','Handoff composited','Session frames=','Frame bridge error'])]
+report['result']='watermark-validation-pending'
 (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
 out=r/'artifacts/video-evidence';out.mkdir(exist_ok=True)
 for session in report['sessions']:
@@ -42,5 +43,10 @@ for session in report['sessions']:
         evidence.append({'file':name,'media_error':media,'mosque_error':mosque})
     session['watermark_pixels']=evidence
     (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
-    assert all(x['media_error']<45 and (x['mosque_error']<45 if session['template']==1 else x['mosque_error']>45) for x in evidence),evidence
+    if not all(x['media_error']<45 and (x['mosque_error']<45 if session['template']==1 else x['mosque_error']>45) for x in evidence):
+        report['result']='failed-watermark-pixels'
+        (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
+        raise AssertionError(evidence)
+report['result']='passed'
+(r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
 print('PASS: encoded video/audio timestamp continuity, playback and actual watermark pixels. Physical Samsung still required.')

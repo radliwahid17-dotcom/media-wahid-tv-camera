@@ -6,6 +6,8 @@ import subprocess
 import sys
 
 stages = [
+    ('Emulator display budget (camera output unchanged)', ['adb', 'shell', 'wm', 'size', '480x854']),
+    ('Emulator display density', ['adb', 'shell', 'wm', 'density', '160']),
     ('Install and seven cold launches', [sys.executable, 'tools/smoke_device.py']),
     ('Original state adapter', [sys.executable, 'tools/device_state_test.py']),
     ('Original logo renderer', [sys.executable, 'tools/logo_device_test.py', '--run-only']),
@@ -27,7 +29,7 @@ for index, (name, command) in enumerate(stages, 1):
     Path(f'artifacts/runtime-stage-{index}.log').write_text(output)
     print(output, flush=True)
     if status:
-        tail = '\n'.join(output.splitlines()[-28:])
+        tail = '\n'.join(output.splitlines()[-60:])
         if os.environ.get('GITHUB_ACTIONS') == 'true':
             tail = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
             print(f'::error title={name}::{tail}', flush=True)

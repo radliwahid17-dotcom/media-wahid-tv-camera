@@ -78,6 +78,7 @@ jobs:
           api-level: 30
           arch: x86_64
           target: default
+          cores: 4
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back emulated -camera-front emulated
           script: cd pro && python3 tools/runtime_suite.py
@@ -92,7 +93,14 @@ jobs:
                   path = Path('artifacts') / (name + '.json')
                   summary.write('### ' + name + '\n\n')
                   if path.is_file():
-                      summary.write('```json\n' + json.dumps(json.loads(path.read_text()), indent=2) + '\n```\n\n')
+                      result = json.loads(path.read_text())
+                      summary.write('```json\n' + json.dumps(result, indent=2) + '\n```\n\n')
+                      if name == 'video-device':
+                          compact = {'result': result['result'], 'assertions': result['assertions'], 'quick': result['quick'],
+                                     'sessions': [{key: session.get(key) for key in ['name', 'orientation', 'video', 'audio', 'flips', 'manual_pause', 'watermark_pixels']} for session in result['sessions']],
+                                     'frame_bridge_log': result.get('frame_bridge_log', []), 'scope': result['scope']}
+                          notice = json.dumps(compact).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                          print('::notice title=Encoded video evidence::' + notice)
                   else:
                       summary.write('No result file; inspect failed step.\n\n')
           PY

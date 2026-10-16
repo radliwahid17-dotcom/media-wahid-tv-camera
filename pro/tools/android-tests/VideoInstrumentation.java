@@ -66,14 +66,14 @@ public final class VideoInstrumentation extends Instrumentation {
         while(SystemClock.elapsedRealtime()<limit){if(condition.run())return;Thread.sleep(50);}
         throw new AssertionError("Timeout "+label+" state="+main(this::state));
     }
-    private void prepare(int template) throws Exception {
+    private void prepare(int template,int rotation) throws Exception {
         main(()->{
             ProcessCameraProvider provider=(ProcessCameraProvider)field(service,"provider");
             provider.unbindAll();
             Object old=field(service,"overlay");if(old!=null)((OverlayEffect)old).close();
             field(service,"bindGeneration",(Integer)field(service,"bindGeneration")+1);
             field(service,"previewView",new WeakReference<PreviewView>(null)); // suppress idle FHD rebind in this fixture
-            field(service,"rotation",0);
+            field(service,"rotation",rotation);
             Map<Integer,Object> values=new HashMap<>();
             values.put(1,false);values.put(2,type("tv.mediawahid.camerapro.CaptureMode").getField("VIDEO").get(null));
             values.put(3,type("tv.mediawahid.camerapro.RecordingPhase").getField("IDLE").get(null));
@@ -86,16 +86,16 @@ public final class VideoInstrumentation extends Instrumentation {
             Object noop0=Proxy.newProxyInstance(loader,new Class<?>[]{f0},(p,m,a)->unit);
             Handler overlayHandler=new Handler(((HandlerThread)field(service,"overlayThread")).getLooper());
             OverlayEffect effect=(OverlayEffect)call(pipeline,"createEffect",overlayHandler,onError,noop0,noop1);
-            Preview preview=new Preview.Builder().setTargetRotation(Surface.ROTATION_0).setMirrorMode(0)
+            Preview preview=new Preview.Builder().setTargetRotation(rotation).setMirrorMode(0)
                 .setResolutionSelector(new ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
                 .setResolutionStrategy(new ResolutionStrategy(new Size(1280,720),ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)).build()).build();
             PreviewView view=(PreviewView)field(activity,"preview");preview.setSurfaceProvider(view.getSurfaceProvider());
             Recorder recorder=new Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).setAspectRatio(AspectRatio.RATIO_16_9)
                 .setTargetVideoEncodingBitRate(16000000).build();
             VideoOutput output=(VideoOutput)type("tv.mediawahid.camerapro.flip.StableVideoOutput").getMethod("wrap",Object.class,Recorder.class).invoke(null,service,recorder);
-            VideoCapture<VideoOutput> video=new VideoCapture.Builder<>(output).setTargetRotation(Surface.ROTATION_0)
+            VideoCapture<VideoOutput> video=new VideoCapture.Builder<>(output).setTargetRotation(rotation)
                 .setTargetFrameRate(new Range<>(30,30)).setDynamicRange(DynamicRange.SDR).setMirrorMode(0).build();
-            ViewPort port=new ViewPort.Builder(new Rational(9,16),Surface.ROTATION_0).setScaleType(ViewPort.FILL_CENTER).build();
+            ViewPort port=new ViewPort.Builder(rotation==Surface.ROTATION_0?new Rational(9,16):new Rational(16,9),rotation).setScaleType(ViewPort.FILL_CENTER).build();
             UseCaseGroup group=new UseCaseGroup.Builder().setViewPort(port).addUseCase(preview).addUseCase(video).addEffect(effect).build();
             field(service,"preview",preview);field(service,"video",video);field(service,"image",null);field(service,"overlay",effect);
             Camera camera=provider.bindToLifecycle((LifecycleOwner)service,CameraSelector.DEFAULT_BACK_CAMERA,group);
@@ -115,7 +115,10 @@ public final class VideoInstrumentation extends Instrumentation {
         transitions.put(new JSONObject().put("at_wall_ms",begin-started).put("ready_ms",SystemClock.elapsedRealtime()-begin).put("front",!previous));
     }
     private void record(String name,int template,int duration,int count,boolean manualPause) throws Exception {
-        prepare(template);
+        record(name,template,duration,count,manualPause,false);
+    }
+    private void record(String name,int template,int duration,int count,boolean manualPause,boolean landscape) throws Exception {
+        prepare(template,landscape?Surface.ROTATION_90:Surface.ROTATION_0);
         main(()->{call(service,"startRecording");return null;});
         waitFor("recording started",()->value("getPhase").toString().equals("RECORDING"),20000);
         Object recording=main(()->field(service,"recording"));
@@ -149,12 +152,12 @@ public final class VideoInstrumentation extends Instrumentation {
         try(Cursor cursor=getTargetContext().getContentResolver().query(uri,new String[]{MediaStore.Video.Media.DATA},null,null,null)) {
             check(cursor!=null&&cursor.moveToFirst(),"Video in MediaStore");path=cursor.getString(0);
         }
-        JSONObject analysis=analyze(uri,name,template);
+        JSONObject analysis=analyze(uri,name,landscape);
         analysis.put("name",name).put("template",template).put("flips",transitions).put("wall_duration_ms",SystemClock.elapsedRealtime()-started)
-            .put("manual_pause",manualPause).put("path",path);
+            .put("manual_pause",manualPause).put("path",path).put("orientation",landscape?"landscape":"portrait");
         sessions.put(analysis);exports.put(path);
     }
-    private JSONObject analyze(Uri uri,String name,int template) throws Exception {
+    private JSONObject analyze(Uri uri,String name,boolean landscape) throws Exception {
         MediaExtractor extractor=new MediaExtractor();extractor.setDataSource(getTargetContext(),uri,null);
         JSONObject report=new JSONObject();long videoDuration=0,audioDuration=0;
         for(int track=0;track<extractor.getTrackCount();track++) {
@@ -178,6 +181,7 @@ public final class VideoInstrumentation extends Instrumentation {
         for(int i=1;i<=3;i++) {
             long at=videoDuration*i/4;Bitmap frame=retriever.getFrameAtTime(at,MediaMetadataRetriever.OPTION_CLOSEST);
             check(frame!=null,"Video playback decode "+at);
+            check((frame.getWidth()>frame.getHeight())==landscape,"Playback orientation "+frame.getWidth()+"x"+frame.getHeight());
             int[] pixels=new int[frame.getWidth()*frame.getHeight()];frame.getPixels(pixels,0,frame.getWidth(),0,0,frame.getWidth(),frame.getHeight());
             int lit=0;for(int p:pixels)if(((p>>16)&255)+((p>>8)&255)+(p&255)>60)lit++;
             check(lit>pixels.length/3,"Decoded camera image is not black");
@@ -196,9 +200,10 @@ public final class VideoInstrumentation extends Instrumentation {
             Context context=getTargetContext();loader=context.getClassLoader();
             activity=startActivitySync(new Intent().setClassName(context,"tv.mediawahid.camerapro.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitFor("bound original service",()->{service=main(()->field(activity,"cameraService"));return service!=null&&main(()->field(service,"provider"))!=null;},30000);
-            record("basic-template-a",1,quick?12:35,2,false);
+            record("basic-template-a",1,quick?12:30,2,false);
             record("stress-template-b",2,quick?15:180,quick?2:20,false);
             record("manual-pause",1,quick?8:12,1,true);
+            record("landscape-template-a",1,quick?8:15,2,false,true);
             JSONObject report=new JSONObject().put("result","passed").put("assertions",checks).put("quick",quick).put("sessions",sessions).put("exports",exports)
                 .put("scope","Real emulator camera and microphone tracks through original Pro service/Recorder/OverlayEffect/PersistentFlip; HD fixture only because emulator FHD profile is unavailable. Production FHD unchanged. Silent emulator microphone does not validate physical speech or Samsung audio sync. 90 minutes not tested.");
             result.putString("report",report.toString());result.putString("stream","VIDEO_CONTINUITY_PASS\n");finish(-1,result);

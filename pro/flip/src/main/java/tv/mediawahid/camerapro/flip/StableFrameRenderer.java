@@ -41,8 +41,10 @@ final class StableFrameRenderer {
     private EGLDisplay display = EGL14.EGL_NO_DISPLAY;
     private EGLContext context = EGL14.EGL_NO_CONTEXT;
     private EGLSurface scratch = EGL14.EGL_NO_SURFACE, window = EGL14.EGL_NO_SURFACE;
+    private EGLSurface currentSurface = EGL14.EGL_NO_SURFACE;
     private EGLConfig config;
     private int oesProgram, imageProgram, width, height, latestTexture, frozenTexture, fbo;
+    private int oesTransform, oesAlpha, imageAlpha;
     private int initialRotation, requestId;
     private SurfaceRequest persistent;
     private Surface encoderSurface;
@@ -109,6 +111,7 @@ final class StableFrameRenderer {
             });
             input.texture.setOnFrameAvailableListener(ignored -> frame(input),handler);
             request.provideSurface(input.surface,executor, result -> {
+                input.returned=true;
                 input.texture.setOnFrameAvailableListener(null);
                 input.texture.release(); input.surface.release();
                 makeCurrent(scratch); GLES20.glDeleteTextures(1,new int[]{input.id},0);
@@ -147,8 +150,9 @@ final class StableFrameRenderer {
         final Surface surface;
         final Timebase timebase;
         final boolean front;
-        boolean transformed, seen;
+        boolean transformed, seen, returned;
         int rotation;
+        long lastTimestamp = Long.MIN_VALUE;
         Input(int generation,SurfaceRequest request,Timebase timebase) {
             this.generation=generation;this.timebase=timebase;
             front=request.getCamera().getCameraInfo().getLensFacing()==CameraSelector.LENS_FACING_FRONT;
@@ -160,9 +164,13 @@ final class StableFrameRenderer {
     }
     private void frame(Input input) {
         try {
-            makeCurrent(scratch);
+            if (input.returned) return; // A queued callback can outlive its producer's return.
+            makeCurrent(window!=EGL14.EGL_NO_SURFACE?window:scratch);
             input.texture.updateTexImage();
             if (closing || current!=input) return;
+            long timestamp=input.texture.getTimestamp();
+            if (timestamp==input.lastTimestamp) return; // Already latched by an earlier queued callback.
+            input.lastTimestamp=timestamp;
             if (!input.seen) {input.seen=true;Log.i(TAG,"Input first frame generation="+input.generation+" front="+input.front+" transformed="+input.transformed);}
             if (!input.transformed) return;
             input.texture.getTransformMatrix(transform);
@@ -175,7 +183,7 @@ final class StableFrameRenderer {
             Matrix.multiplyMM(combined,0,transform,0,rotationMatrix,0);
             attach(latestTexture); draw(input.id,true,combined,1f); checkGl();
             hasFrame=true; serial++;
-            long now=System.nanoTime(), captured=input.texture.getTimestamp();
+            long now=System.nanoTime(), captured=timestamp;
             if (input.timebase==Timebase.REALTIME) captured-=SystemClock.elapsedRealtimeNanos()-now;
             if (captured<=0 || captured>now || now-captured>1_000_000_000L) captured=now;
             lastLiveCapture=captured;
@@ -258,6 +266,18 @@ final class StableFrameRenderer {
         require(context!=EGL14.EGL_NO_CONTEXT,"EGL context");
         scratch=EGL14.eglCreatePbufferSurface(display,config,new int[]{EGL14.EGL_WIDTH,1,EGL14.EGL_HEIGHT,1,EGL14.EGL_NONE},0);
         makeCurrent(scratch);oesProgram=program(true);imageProgram=program(false);
+        oesTransform=GLES20.glGetUniformLocation(oesProgram,"transform");
+        oesAlpha=GLES20.glGetUniformLocation(oesProgram,"alpha");
+        imageAlpha=GLES20.glGetUniformLocation(imageProgram,"alpha");
+        for(int program:new int[]{oesProgram,imageProgram}) {
+            GLES20.glUseProgram(program);
+            GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(program,"transform"),1,false,identity,0);
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(program,"image"),0);
+        }
+        vertices.position(0);coords.position(0);
+        GLES20.glEnableVertexAttribArray(0);GLES20.glEnableVertexAttribArray(1);
+        GLES20.glVertexAttribPointer(0,2,GLES20.GL_FLOAT,false,0,vertices);
+        GLES20.glVertexAttribPointer(1,2,GLES20.GL_FLOAT,false,0,coords);
     }
     private void allocateBuffers() {
         latestTexture=texture(GLES20.GL_TEXTURE_2D);frozenTexture=texture(GLES20.GL_TEXTURE_2D);
@@ -273,18 +293,16 @@ final class StableFrameRenderer {
         require(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER)==GLES20.GL_FRAMEBUFFER_COMPLETE,"Frame buffer");
         GLES20.glViewport(0,0,width,height);
     }
-    private void makeCurrent(EGLSurface surface) {require(EGL14.eglMakeCurrent(display,surface,surface,context),"EGL current");}
+    private void makeCurrent(EGLSurface surface) {
+        if (surface.equals(currentSurface)) return;
+        require(EGL14.eglMakeCurrent(display,surface,surface,context),"EGL current");currentSurface=surface;
+    }
     private void draw(int texture,boolean oes,float[] matrix,float alpha) {
         int program=oes?oesProgram:imageProgram,target=oes?GLES11Ext.GL_TEXTURE_EXTERNAL_OES:GLES20.GL_TEXTURE_2D;
         GLES20.glUseProgram(program);GLES20.glActiveTexture(GLES20.GL_TEXTURE0);GLES20.glBindTexture(target,texture);
-        int pos=GLES20.glGetAttribLocation(program,"position"),uv=GLES20.glGetAttribLocation(program,"uv");
-        vertices.position(0);coords.position(0);GLES20.glEnableVertexAttribArray(pos);GLES20.glEnableVertexAttribArray(uv);
-        GLES20.glVertexAttribPointer(pos,2,GLES20.GL_FLOAT,false,0,vertices);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,0,coords);
-        GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(program,"transform"),1,false,matrix,0);
-        GLES20.glUniform1f(GLES20.glGetUniformLocation(program,"alpha"),alpha);
-        GLES20.glUniform1i(GLES20.glGetUniformLocation(program,"image"),0);
+        if(oes) GLES20.glUniformMatrix4fv(oesTransform,1,false,matrix,0);
+        GLES20.glUniform1f(oes?oesAlpha:imageAlpha,alpha);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
-        GLES20.glDisableVertexAttribArray(pos);GLES20.glDisableVertexAttribArray(uv);
     }
     private static int texture(int target) {
         int[] ids=new int[1];GLES20.glGenTextures(1,ids,0);GLES20.glBindTexture(target,ids[0]);
@@ -298,7 +316,8 @@ final class StableFrameRenderer {
         String vertex="attribute vec4 position;attribute vec4 uv;uniform mat4 transform;varying vec2 coord;void main(){gl_Position=position;coord=(transform*uv).xy;}";
         String fragment=(oes?"#extension GL_OES_EGL_image_external : require\n":"")+"precision mediump float;uniform "+(oes?"samplerExternalOES":"sampler2D")+" image;uniform float alpha;varying vec2 coord;void main(){vec4 c=texture2D(image,coord);gl_FragColor=vec4(c.rgb,c.a*alpha);}";
         int result=GLES20.glCreateProgram(),vs=shader(GLES20.GL_VERTEX_SHADER,vertex),fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment);
-        GLES20.glAttachShader(result,vs);GLES20.glAttachShader(result,fs);GLES20.glLinkProgram(result);
+        GLES20.glAttachShader(result,vs);GLES20.glAttachShader(result,fs);
+        GLES20.glBindAttribLocation(result,0,"position");GLES20.glBindAttribLocation(result,1,"uv");GLES20.glLinkProgram(result);
         int[] valid=new int[1];GLES20.glGetProgramiv(result,GLES20.GL_LINK_STATUS,valid,0);
         require(valid[0]!=0,"GL link: "+GLES20.glGetProgramInfoLog(result));GLES20.glDeleteShader(vs);GLES20.glDeleteShader(fs);return result;
     }
