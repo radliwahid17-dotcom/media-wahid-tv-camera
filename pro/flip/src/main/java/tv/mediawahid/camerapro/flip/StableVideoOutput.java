@@ -7,6 +7,7 @@ import android.util.Log;
 import androidx.camera.core.CameraInfo;
 import androidx.camera.core.SurfaceRequest;
 import androidx.camera.core.impl.Observable;
+import androidx.camera.core.impl.MutableStateObservable;
 import androidx.camera.core.impl.Timebase;
 import androidx.camera.video.EncoderProfilesResolver;
 import androidx.camera.video.MediaSpec;
@@ -31,6 +32,18 @@ public final class StableVideoOutput implements VideoOutput {
     private final WeakReference<Object> owner;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final StableFrameRenderer renderer;
+    private final MutableStateObservable<StreamInfo> stream;
+    private final StreamInfo idleStream;
+    private StreamInfo recorderStream;
+    private boolean refreshing;
+    private final Observable.Observer<StreamInfo> streamObserver = new Observable.Observer<>() {
+        @Override public void onNewData(StreamInfo info) {
+            if (info == null || closed) return;
+            recorderStream = info;
+            if (!refreshing) stream.setState(info);
+        }
+        @Override public void onError(Throwable failure) { error(failure); }
+    };
     private volatile boolean active, stopping, closed;
     private volatile SourceState source = SourceState.INACTIVE;
     private SurfaceRequest encoderRequest;
@@ -38,7 +51,17 @@ public final class StableVideoOutput implements VideoOutput {
     private StableVideoOutput(Object service, Recorder recorder) {
         this.recorder = recorder;
         owner = new WeakReference<>(service);
+        try {
+            // Recorder publishes its initial idle state synchronously; do not synthesize
+            // package-private StreamInfo values or reflect into CameraX internals.
+            var initial = recorder.getStreamInfo().fetchData();
+            if (!initial.isDone()) throw new IllegalStateException("Initial Recorder stream unavailable");
+            recorderStream = initial.get();
+        } catch (Exception failure) { throw new IllegalStateException("Initial Recorder stream", failure); }
+        idleStream = recorderStream;
+        stream = MutableStateObservable.withInitialState(recorderStream);
         renderer = new StableFrameRenderer(this::error);
+        recorder.getStreamInfo().addObserver(command -> main.post(command), streamObserver);
     }
     public static VideoOutput wrap(Object service, Recorder recorder) {
         StableVideoOutput bridge = new StableVideoOutput(service, recorder);
@@ -90,6 +113,22 @@ public final class StableVideoOutput implements VideoOutput {
         StableVideoOutput bridge = find(service);
         if (bridge != null) bridge.renderer.cancelHandoff();
     }
+    /** StreamSharing may cache the detached child's closed repeating surface while
+     * rebinding an ACTIVE use case. Refresh only its camera-side repeating graph;
+     * Recorder, encoder pumping and microphone remain active throughout. Dispatch
+     * the second update on the next main turn so both graph states are observed.
+     */
+    static void refreshCameraStream(Object service) {
+        StableVideoOutput bridge = find(service);
+        if (bridge == null || bridge.closed) return;
+        bridge.refreshing = true;
+        bridge.stream.setState(bridge.idleStream);
+        bridge.main.post(() -> {
+            bridge.refreshing = false;
+            if (!bridge.closed) bridge.stream.setState(bridge.recorderStream);
+        });
+        Log.i(TAG, "Refresh camera repeating surface; Recorder remains active");
+    }
     @Override public void onSurfaceRequested(SurfaceRequest request) {
         onSurfaceRequested(request, Timebase.UPTIME, true);
     }
@@ -126,6 +165,7 @@ public final class StableVideoOutput implements VideoOutput {
     private void close() {
         if (closed) return;
         closed = true;
+        recorder.getStreamInfo().removeObserver(streamObserver);
         renderer.close();
         Log.i(TAG, "Bridge closed recorder=" + System.identityHashCode(recorder));
     }
@@ -138,7 +178,7 @@ public final class StableVideoOutput implements VideoOutput {
             catch (ReflectiveOperationException e) { Log.e(TAG, "Cannot report renderer failure", e); }
         });
     }
-    @Override public Observable<StreamInfo> getStreamInfo() { return recorder.getStreamInfo(); }
+    @Override public Observable<StreamInfo> getStreamInfo() { return stream; }
     @Override public Observable<MediaSpec> getMediaSpec() { return recorder.getMediaSpec(); }
     @Override public Observable<Boolean> isSourceStreamRequired() { return recorder.isSourceStreamRequired(); }
     @Override public VideoCapabilities getMediaCapabilities(CameraInfo info, int type) { return recorder.getMediaCapabilities(info, type); }

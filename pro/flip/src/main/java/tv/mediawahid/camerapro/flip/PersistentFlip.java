@@ -225,6 +225,7 @@ public final class PersistentFlip {
         provider.unbind(preview, video);
         opened = false;
         bound = provider.bindToLifecycle(lifecycle, selector(front), group);
+        StableVideoOutput.refreshCameraStream(service);
         OriginalAccess.field(service, "camera", bound);
         Camera current = bound;
         timeout = () -> {
