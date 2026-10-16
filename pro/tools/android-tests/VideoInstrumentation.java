@@ -182,7 +182,8 @@ public final class VideoInstrumentation extends Instrumentation {
         MediaMetadataRetriever retriever=new MediaMetadataRetriever();retriever.setDataSource(getTargetContext(),uri);
         JSONArray frames=new JSONArray();
         for(int i=1;i<=3;i++) {
-            long at=videoDuration*i/4;Bitmap frame=retriever.getFrameAtTime(at,MediaMetadataRetriever.OPTION_CLOSEST);
+            long at=Math.min(videoDuration-100000,videoDuration*i/4+i*137000L);
+            Bitmap frame=retriever.getFrameAtTime(at,MediaMetadataRetriever.OPTION_CLOSEST);
             check(frame!=null,"Video playback decode "+at);
             check((frame.getWidth()>frame.getHeight())==landscape,"Playback orientation "+frame.getWidth()+"x"+frame.getHeight());
             int[] pixels=new int[frame.getWidth()*frame.getHeight()];frame.getPixels(pixels,0,frame.getWidth(),0,0,frame.getWidth(),frame.getHeight());

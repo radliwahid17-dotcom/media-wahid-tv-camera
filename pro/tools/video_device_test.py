@@ -31,25 +31,35 @@ for session in report['sessions']:
     subprocess.run([a.adb,'pull',session['path'],str(out/(session['name']+'.mp4'))],check=True)
 subprocess.run([a.adb,'pull','/sdcard/Pictures/MediaWahidVideoValidation',str(out/'playback-frames')],check=True)
 # Source artwork comparison on decoded MP4 playback frames (not UI screenshots).
-from PIL import Image
+from PIL import Image,ImageChops,ImageStat
 source=Path(__file__).with_name('photo_device_test.py').read_text()
 helper=source[source.index('def logo_error('):source.index("click('Select photo mode')")]
 root=r
 exec(helper)
 for session in report['sessions']:
     evidence=[]
+    previous=None;motion=[]
     for name in session['playback_frames']:
         with Image.open(out/'playback-frames'/name) as image:
             photo=image.convert('RGB')
             media=logo_error(photo,'logo_media_wahid_tv.png',True)
             mosque=logo_error(photo,'logo_masjid.png',False)
+            if previous is not None:
+                difference=ImageChops.difference(previous,photo).crop((0,photo.height//4,photo.width,photo.height)).resize((64,64))
+                motion.append(round(sum(ImageStat.Stat(difference).mean)/3,3))
+            previous=photo.copy()
         evidence.append({'file':name,'media_error':media,'mosque_error':mosque})
     session['watermark_pixels']=evidence
+    session['animated_emulator_playback_difference']=motion
     (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
     if not all(x['media_error']<45 and (x['mosque_error']<45 if session['template']==1 else x['mosque_error']>45) for x in evidence):
         report['result']='failed-watermark-pixels'
         (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
         raise AssertionError(evidence)
+    if not motion or max(motion)<=1:
+        report['result']='failed-frozen-emulator-playback'
+        (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
+        raise AssertionError('Animated emulator camera content frozen: '+str(motion))
 report['result']='passed' if native_passed else 'failed-native-timing'
 (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
 assert native_passed,json.dumps(report.get('timing_failures',[]))+diagnostics
