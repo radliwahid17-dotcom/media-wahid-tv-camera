@@ -26,7 +26,9 @@ public final class MWTVRepeatingVideoConfig extends VideoEncoderConfig {
     @Override public Builder toBuilder() { return original.toBuilder(); }
     @Override public MediaFormat toMediaFormat() {
         MediaFormat format=original.toMediaFormat();
-        format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER,1_000_000L/getEncodeFrameRate());
+        // Wait 1.2 frame periods: normal 30 FPS input should not be repeated just
+        // because of sub-millisecond scheduling jitter. Held input still advances.
+        format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER,1_200_000L/getEncodeFrameRate());
         format.setInteger(MediaFormat.KEY_PRIORITY,0);
         return format;
     }

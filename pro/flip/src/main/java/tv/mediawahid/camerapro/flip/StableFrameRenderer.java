@@ -203,8 +203,8 @@ final class StableFrameRenderer {
     }
     private void pump() {
         if (closing || !prepared || paused || !fresh || !hasFrame || window==EGL14.EGL_NO_SURFACE) return;
-        // The configured MediaCodec surface source repeats its last buffer at
-        // 30 FPS. Leave GPU time for opening the next camera instead of uploading
+        // The configured MediaCodec surface source repeats its last buffer when
+        // input stalls. Leave GPU time for opening the next camera instead of uploading
         // identical pixels; new camera frames and blend steps schedule us again.
         if (waiting || (!transitioning && lastPresentedSerial==serial)) return;
         long now=System.nanoTime(); long pts=cadence.presentation(now);

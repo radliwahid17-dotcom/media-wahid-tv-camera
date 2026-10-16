@@ -2,9 +2,9 @@ package androidx.camera.video;
 
 import android.annotation.SuppressLint;
 import android.util.Log;
-import androidx.camera.video.internal.encoder.EncoderImpl;
 import androidx.camera.video.internal.encoder.MWTVRepeatingVideoConfig;
 import androidx.camera.video.internal.encoder.VideoEncoderConfig;
+import tv.mediawahid.camerapro.flip.MuxerCadenceEncoder;
 
 /** Enables the documented MediaCodec surface repeat option through CameraX's
  * package-access factory extension. No reflection or original CameraX DEX edits.
@@ -17,7 +17,7 @@ public final class MWTVEncoderFactory {
         builder.setVideoEncoderFactory((executor,config,sessionType) -> {
             VideoEncoderConfig video=(VideoEncoderConfig)config;
             Log.i("MWTV.FrameBridge","Configure encoder native frame repeat fps="+video.getEncodeFrameRate());
-            return new EncoderImpl(executor,new MWTVRepeatingVideoConfig(video),sessionType);
+            return new MuxerCadenceEncoder(executor,new MWTVRepeatingVideoConfig(video),sessionType);
         });
         return builder.build();
     }
