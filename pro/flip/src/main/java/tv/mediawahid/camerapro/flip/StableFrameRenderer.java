@@ -101,8 +101,10 @@ final class StableFrameRenderer {
             makeCurrent(scratch);
             Input input=new Input(++requestId,request,timebase);
             inputs.add(input); current=input;
+            Log.i(TAG,"Input provided generation="+input.generation+" front="+input.front+" outstanding="+inputs.size());
             request.setTransformationInfoListener(executor, info -> {
                 input.rotation=info.getRotationDegrees(); input.transformed=true;
+                Log.i(TAG,"Input transform generation="+input.generation+" rotation="+input.rotation);
                 if (initial!=null) initial.accept(info);
             });
             input.texture.setOnFrameAvailableListener(ignored -> frame(input),handler);
@@ -145,7 +147,7 @@ final class StableFrameRenderer {
         final Surface surface;
         final Timebase timebase;
         final boolean front;
-        boolean transformed;
+        boolean transformed, seen;
         int rotation;
         Input(int generation,SurfaceRequest request,Timebase timebase) {
             this.generation=generation;this.timebase=timebase;
@@ -161,6 +163,7 @@ final class StableFrameRenderer {
             makeCurrent(scratch);
             input.texture.updateTexImage();
             if (closing || current!=input) return;
+            if (!input.seen) {input.seen=true;Log.i(TAG,"Input first frame generation="+input.generation+" front="+input.front+" transformed="+input.transformed);}
             if (!input.transformed) return;
             input.texture.getTransformMatrix(transform);
             // Transform the incoming buffer into the initial encoder orientation. The original

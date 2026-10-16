@@ -94,6 +94,8 @@ public final class StableVideoOutput implements VideoOutput {
         onSurfaceRequested(request, Timebase.UPTIME, true);
     }
     @Override public void onSurfaceRequested(SurfaceRequest request, Timebase timebase, boolean glProcessing) {
+        Log.i(TAG, "Camera surface requested size=" + request.getResolution() + " lens="
+                + request.getCamera().getCameraInfo().getLensFacing() + " closed=" + closed);
         if (closed) { request.willNotProvideSurface(); return; }
         // Only the first request reaches Recorder. Subsequent camera requests replace GPU inputs.
         boolean first = encoderRequest == null;

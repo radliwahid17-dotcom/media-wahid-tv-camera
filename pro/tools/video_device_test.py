@@ -17,7 +17,7 @@ finally:
     print('\n'.join(bridge[-35:]))
 (r/'artifacts/video-instrumentation.log').write_text(result)
 print(result)
-assert 'VIDEO_CONTINUITY_PASS' in result and 'INSTRUMENTATION_CODE: -1' in result,result
+assert 'VIDEO_CONTINUITY_PASS' in result and 'INSTRUMENTATION_CODE: -1' in result,result+'\nBridge diagnostics:\n'+'\n'.join([line for line in bridge if ' at ' not in line][-22:])
 line=next(line for line in result.splitlines() if line.startswith('INSTRUMENTATION_RESULT: report='))
 report=json.loads(line.split('=',1)[1]);assert report['result']=='passed' and len(report['sessions'])==3
 report['frame_bridge_log']=[line for line in log.splitlines() if 'MWTV.FrameBridge' in line and any(term in line for term in ['New camera frame','Handoff composited','Session frames=','Frame bridge error'])]
