@@ -1,5 +1,10 @@
 # Bukti dan prosedur pengujian
 
+Perbaikan flip 1.0.4: lihat [SEAMLESS-FLIP.md](SEAMLESS-FLIP.md).
+Status native timing belum seluruhnya lulus; hasil lama di halaman ini tidak
+membuktikan kelancaran 1.0.4 atau pengujian Samsung.
+Hasil di bawah adalah riwayat build lama, bukan bukti pengujian APK terbaru.
+
 Revisi logo permanen 1.0.3: lihat [PERMANENT-LOGOS.md](PERMANENT-LOGOS.md).
 Bukti 1.0.2 di bawah adalah riwayat dan tidak membuktikan logo permanen.
 

@@ -1,7 +1,11 @@
-# Media Wahid TV Camera Pro 1.0.3 Permanent Logos
+# Media Wahid TV Camera Pro 1.0.4 Camera Handoff
 
 Perbaikan terarah terhadap APK Pro 1.0.1 dalam repositori ini. Package tetap
-`tv.mediawahid.camerapro`, versionName `1.0.3`, versionCode `4`.
+`tv.mediawahid.camerapro`, versionName `1.0.4`, versionCode `5`.
+
+Status pengujian: APK berhasil dibangun dan diluncurkan, tetapi uji timing
+emulator belum seluruhnya lulus. APK ini belum dinyatakan memenuhi target
+seamless. Hasil, batas pengujian dan unduhan ada di [laporan 1.0.4](docs/SEAMLESS-FLIP.md).
 
 Source Kotlin asli tidak tersedia. Proyek Gradle ini mengompilasi delta Java,
 merekonstruksi bytecode aplikasi dengan APKTool, kemudian mempertahankan semua
@@ -16,18 +20,19 @@ memerlukan Git worktree baru.
 
 ```bash
 sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
-./gradlew --no-daemon :flip:lintDebug :flip:testDebugUnitTest assembleFlip
+./gradlew --no-daemon :flip:lintDebug :flip:testDebugUnitTest assembleFlip validationClasspath
 python3 tools/verify_apk.py
 ```
 
-Hasil: `artifacts/Media-Wahid-TV-Camera-Pro-1.0.3-PERMANENT-LOGOS.apk`, SHA256 dan provenance.
+Hasil: `artifacts/Media-Wahid-TV-Camera-Pro-1.0.4-SEAMLESS.apk`, SHA256 dan provenance.
 APKTool dan APK referensi diverifikasi terhadap checksum terpin sebelum patch.
 Gradle wrapper memverifikasi checksum distribusi Gradle.
 
-Workflow [Pro 1.0.3 Permanent Logos APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/workflows/pro-flip.yml) menjalankan build,
-lint delta Java, 10 unit test, pemeriksaan struktur/resource, upload artifact, lalu
+Workflow [Pro 1.0.4 Seamless Flip APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/workflows/pro-flip.yml) menjalankan build,
+lint delta Java, 18 unit test, pemeriksaan struktur/resource, upload artifact, lalu
 tujuh cold launch, 37 assertion adapter state, dan 32 kasus renderer logo pada
-emulator Android 11, kemudian memeriksa empat foto offline dari kamera depan/belakang. Lint tidak mengaudit ulang source
+emulator Android 11, kemudian memeriksa empat foto offline dari kamera depan/belakang
+dan video HD dari service asli dengan 20 flip dalam tiga menit. Lint tidak mengaudit ulang source
 aplikasi asli yang tidak tersedia. Run CI yang belum dijalankan tidak dianggap lulus.
 
 ## Perbaikan
@@ -35,15 +40,24 @@ aplikasi asli yang tidak tersedia. Run CI yang belum dijalankan tidak dianggap l
 - `startRecording()` menggunakan `asPersistentRecording()` sebelum `start()`.
 - Hanya tombol Flip mendapat predicate baru; lock template, mode dan orientasi
   selama recording tetap mengikuti implementasi asli.
-- Saat recording/paused, kamera tujuan dan FHD/30 FPS diperiksa sebelum unbind.
+- Saat recording/paused, kamera tujuan, kualitas aktif dan FPS diperiksa sebelum unbind;
+  query kemampuan dilakukan di worker thread. Konfigurasi produksi tetap FHD SDR/30 FPS/16 Mbps.
   Preview, VideoCapture, Recorder, OverlayEffect, output MediaStore, audio dan
   state waktu dipertahankan; tidak ada stop/start untuk flip.
+- `StableVideoOutput` mempertahankan satu SurfaceRequest encoder; surface input
+  kamera diganti terpisah. Renderer EGL mempertahankan clock/timestamp, sementara
+  opsi surface-repeat MediaCodec mengulang buffer terakhir tanpa upload GPU ganda.
+  Buffer yang ditahan diperbarui setiap 100 ms untuk codec dengan batas jumlah repeat.
+  Watermark video memakai aset/settings/geometry/Canvas drawing Pro asli pada tekstur
+  yang dikomposisi setelah normalisasi kamera, sehingga posisinya tetap pada encoder.
+  Frame terakhir ditahan selama sensor tidak tersedia, lalu blend 120 ms dilakukan setelah
+  frame kamera baru tiba. Ini tidak menghasilkan frame sensor baru selama jeda hardware.
 - Transisi ditolak selama STARTING/STOPPING, foto/import logo, atau switch lain.
-  Kamera OPEN dan preview STREAMING diperiksa; timeout/error memicu upaya kembali
+  Kamera OPEN dan frame video dari kamera tujuan diperiksa; timeout/error memicu upaya kembali
   ke kamera sebelumnya tanpa memanggil stop recording.
 - Observer dibersihkan saat Finalize/destroy. Setelah STOP alur bind asli
   dipulihkan agar kamera dan kontrol dapat digunakan kembali.
-- Log `MWTV.PersistentFlip` dan `MWTV.Recording` memuat identitas recording,
+- Log `MWTV.PersistentFlip`, `MWTV.FrameBridge` dan `MWTV.Recording` memuat identitas recording,
   Start/Finalize, durasi, byte dan status audio tanpa mengubah tampilan.
 
 ## Logo dan signing
@@ -61,9 +75,12 @@ bawaan, termasuk setelah upgrade dengan file impor lama. Badge placeholder
 dihapus; tombol impor galeri di Settings dihapus dan jalurnya dinonaktifkan.
 Template A tetap Masjid kiri atas + TV kanan atas; B hanya TV kanan atas.
 Ukuran default 25% lebar frame dan margin 3% tetap memakai geometry Pro asli.
-Pipeline OverlayEffect asli tetap menarget preview, foto, dan video (mask 7).
-Perbaikan flip dari 1.0.2 tetap disertakan; tidak ada perubahan Recorder atau UI
-kamera utama dalam revisi logo ini.
+Mode PHOTO mempertahankan OverlayEffect asli (mask 7). Dalam mode VIDEO, effect
+asli menarget preview (mask 1); watermark video memakai gambar dan drawing/geometry
+asli pada kompositor encoder setelah normalisasi kamera. Logo tidak diduplikasi.
+Geometri, resource dan UI kamera utama tidak diganti dalam perbaikan handoff.
+Recorder dan muxer/audio asli digunakan melalui bridge frame, bukan diganti dengan
+perekaman segmen atau penggabungan file.
 
 Kunci signing 1.0.1 tidak tersedia. Build menggunakan identitas uji yang dibuat
 di luar repositori, dengan password acak yang tidak disimpan dalam Git.
@@ -83,13 +100,23 @@ python3 tools/device_state_test.py /path/to/adb
 python3 tools/logo_device_test.py --adb /path/to/adb
 python3 -m pip install Pillow==11.3.0
 python3 tools/photo_device_test.py --adb /path/to/adb --allow-resolution-fallback
+python3 tools/video_device_test.py --adb /path/to/adb
 ```
 
 Smoke test menguji instalasi dan tujuh peluncuran ulang. Renderer test memakai
 frame sintetis; photo test memeriksa pixel artwork pada JPEG hasil kamera.
 `--allow-resolution-fallback` menerima resolusi kamera emulator untuk pengujian
 logo, tetapi tetap mencatat assertion FHD yang gagal. Ia tidak membuktikan kualitas Samsung.
+Video test menggunakan fixture HD dengan preview VGA untuk emulator yang tidak mengiklankan FHD;
+service, recording, watermark, audio, flip dan MediaStore berasal dari APK final.
+Audio tetap dipilih dari profil perangkat oleh Recorder asli.
+Fixture tidak mengubah APK atau resolusi produksi. Ia memeriksa PTS track video/audio,
+playback, pixel watermark, Recording/Recorder/VideoCapture yang sama, serta pause/resume.
+Observer UI/display dilepas hanya dalam fixture video HD agar tidak memicu bind FHD;
+landscape di fixture memvalidasi orientasi file, sedangkan rotasi UI otomatis perlu Samsung.
+Audio emulator hening tidak membuktikan sinkronisasi ucapan pada Samsung.
 Prosedur regresi Samsung dan status bukti ada di [docs/TESTING.md](docs/TESTING.md).
 Tanpa uji media yang lulus, APK belum dinyatakan memenuhi seluruh definition of done.
 
-Hasil revisi logo permanen dan unduhan APK final: [docs/PERMANENT-LOGOS.md](docs/PERMANENT-LOGOS.md).
+Arsitektur dan bukti perbaikan terbaru: [docs/SEAMLESS-FLIP.md](docs/SEAMLESS-FLIP.md).
+Riwayat revisi logo permanen: [docs/PERMANENT-LOGOS.md](docs/PERMANENT-LOGOS.md).
