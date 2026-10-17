@@ -82,7 +82,7 @@ jobs:
           target: default
           cores: 4
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back emulated -camera-front emulated
+          emulator-options: -no-window -gpu swangle -noaudio -no-boot-anim -no-snapshot -camera-back emulated -camera-front emulated
           script: cd pro && python3 tools/runtime_suite.py
       - name: Publish validation results
         if: always()

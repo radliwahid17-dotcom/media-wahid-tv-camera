@@ -84,7 +84,10 @@ final class StableFrameRenderer {
             catch (Exception e) { error.accept(e); }
         });
     }
-    void initialRotation(int degrees) { initialRotation = degrees;orientationReady=true;logoDirty=true; } // GL thread.
+    void initialRotation(int degrees) { // GL thread; zoom/crop updates do not rebuild fixed artwork.
+        if(!orientationReady||initialRotation!=degrees)logoDirty=true;
+        initialRotation=degrees;orientationReady=true;
+    }
     void encoder(SurfaceRequest request) {
         post(() -> {
             persistent = request; width=request.getResolution().getWidth(); height=request.getResolution().getHeight();
@@ -112,7 +115,7 @@ final class StableFrameRenderer {
                 request.willNotProvideSurface();
                 throw new IllegalStateException("Camera input size changed during a fixed encoder session: "+request.getResolution());
             }
-            makeCurrent(scratch);
+            makeCurrent(window!=EGL14.EGL_NO_SURFACE?window:scratch);
             Input input=new Input(++requestId,request,timebase);
             inputs.add(input); current=input;
             Log.i(TAG,"Input provided generation="+input.generation+" front="+input.front+" outstanding="+inputs.size());
@@ -127,7 +130,7 @@ final class StableFrameRenderer {
                 input.returned=true;
                 input.texture.setOnFrameAvailableListener(null);
                 input.texture.release(); input.surface.release();
-                makeCurrent(scratch); GLES20.glDeleteTextures(1,new int[]{input.id},0);
+                makeCurrent(window!=EGL14.EGL_NO_SURFACE?window:scratch); GLES20.glDeleteTextures(1,new int[]{input.id},0);
                 inputs.remove(input);
                 if (current==input) current=null;
                 disposeWhenReturned();
@@ -155,7 +158,7 @@ final class StableFrameRenderer {
     }); }
     void handoff(boolean front, Runnable callback) { post(() -> {
         if (hasFrame) {
-            makeCurrent(scratch); attach(frozenTexture); draw(latestTexture,false,identity,1f);
+            makeCurrent(window!=EGL14.EGL_NO_SURFACE?window:scratch); attach(frozenTexture); draw(latestTexture,false,identity,1f);
         }
         waiting=true; transitioning=false; expectedFront=front; minimumRequest=requestId+1; ready=callback;
         handoffStart=System.nanoTime(); gapStartCapture=lastLiveCapture;
