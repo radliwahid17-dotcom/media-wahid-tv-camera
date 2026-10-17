@@ -121,7 +121,16 @@ public final class VideoInstrumentation extends Instrumentation {
         record(name,template,duration,count,manualPause,false);
     }
     private void record(String name,int template,int duration,int count,boolean manualPause,boolean landscape) throws Exception {
-        prepare(template,landscape?Surface.ROTATION_90:Surface.ROTATION_0);
+        int rotation=landscape?Surface.ROTATION_90:Surface.ROTATION_0;
+        // Keep the real display aligned with this fixture before START locks it.
+        // Merely changing service.rotation lets MainActivity rotate/rebuild during
+        // recording, attach a preview again, then request unsupported FHD after STOP.
+        check(getUiAutomation().setRotation(rotation),"Set emulator display rotation");
+        waitFor("display and UI rotation",()->main(()->
+            activity.getWindowManager().getDefaultDisplay().getRotation()==rotation
+            &&(activity.getResources().getConfiguration().orientation==2)==landscape),10000);
+        Thread.sleep(500);
+        prepare(template,rotation);
         main(()->{call(service,"startRecording");return null;});
         waitFor("recording started",()->value("getPhase").toString().equals("RECORDING"),20000);
         Object recording=main(()->field(service,"recording"));
@@ -216,7 +225,15 @@ public final class VideoInstrumentation extends Instrumentation {
             result.putString("report",report.toString());result.putString("stream",passed?"VIDEO_CONTINUITY_PASS\n":"VIDEO_CONTINUITY_FAIL\n");finish(passed?-1:1,result);
         } catch(Throwable e) {
             StringWriter text=new StringWriter();e.printStackTrace(new PrintWriter(text));result.putString("stream",text.toString());
-            result.putString("partial",new JSONObject().toString());finish(1,result);
+            try {
+                result.putString("report",new JSONObject().put("result","failed-functional").put("failure",text.toString())
+                    .put("assertions",checks).put("quick",quick).put("timing_failures",timingFailures).put("sessions",sessions).put("exports",exports)
+                    .put("scope","Partial native emulator HD evidence; failed functional check. Physical Samsung and 90 minutes untested.").toString());
+            } catch(JSONException ignored) {result.putString("partial",new JSONObject().toString());}
+            finish(1,result);
+        } finally {
+            try {getUiAutomation().setRotation(UiAutomation.ROTATION_UNFREEZE);}
+            catch(Exception e) {Log.w("MWTV.VideoTest","Restore emulator rotation",e);}
         }
     }
 }

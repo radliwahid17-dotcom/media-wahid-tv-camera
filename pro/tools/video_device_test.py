@@ -21,7 +21,7 @@ diagnostics='\nBridge diagnostics:\n'+'\n'.join([line for line in bridge if not 
 native_passed='VIDEO_CONTINUITY_PASS' in result and 'INSTRUMENTATION_CODE: -1' in result
 line=next((line for line in result.splitlines() if line.startswith('INSTRUMENTATION_RESULT: report=')),None)
 assert line is not None,result+diagnostics
-report=json.loads(line.split('=',1)[1]);assert len(report['sessions'])==4
+report=json.loads(line.split('=',1)[1])
 report['native_result']=report['result']
 report['frame_bridge_log']=[line for line in log.splitlines() if 'MWTV.FrameBridge' in line and any(term in line for term in ['New camera frame','Handoff composited','Session frames=','Frame bridge error','Muxer timestamps adjusted='])]
 report['result']='watermark-validation-pending'
@@ -60,7 +60,7 @@ for session in report['sessions']:
         report['result']='failed-frozen-emulator-playback'
         (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
         raise AssertionError('Animated emulator camera content frozen: '+str(motion))
-report['result']='passed' if native_passed else 'failed-native-timing'
+report['result']='passed' if native_passed else ('failed-native-functional' if report['native_result']=='failed-functional' else 'failed-native-timing')
 (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
-assert native_passed,json.dumps(report.get('timing_failures',[]))+diagnostics
+assert native_passed and len(report['sessions'])==4,report.get('failure',json.dumps(report.get('timing_failures',[])))+diagnostics
 print('PASS: encoded video/audio timestamp continuity, playback and actual watermark pixels. Physical Samsung still required.')
