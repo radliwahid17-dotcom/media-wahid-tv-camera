@@ -95,7 +95,7 @@ public final class VideoInstrumentation extends Instrumentation {
             PreviewView view=(PreviewView)field(activity,"preview");preview.setSurfaceProvider(view.getSurfaceProvider());
             Recorder.Builder builder=new Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).setAspectRatio(AspectRatio.RATIO_16_9)
                 .setTargetVideoEncodingBitRate(16000000);
-            Recorder recorder=(Recorder)type("androidx.camera.video.MWTVEncoderFactory").getMethod("buildValidation",Recorder.Builder.class).invoke(null,builder);
+            Recorder recorder=(Recorder)type("androidx.camera.video.MWTVEncoderFactory").getMethod("build",Recorder.Builder.class).invoke(null,builder);
             VideoOutput output=(VideoOutput)type("tv.mediawahid.camerapro.flip.StableVideoOutput").getMethod("wrap",Object.class,Recorder.class).invoke(null,service,recorder);
             VideoCapture<VideoOutput> video=new VideoCapture.Builder<>(output).setTargetRotation(rotation)
                 .setTargetFrameRate(new Range<>(30,30)).setDynamicRange(DynamicRange.SDR).setMirrorMode(0).build();
@@ -224,7 +224,7 @@ public final class VideoInstrumentation extends Instrumentation {
             record("landscape-template-a",1,quick?8:15,2,false,true);
             boolean passed=timingFailures.length()==0;
             JSONObject report=new JSONObject().put("result",passed?"passed":"failed-timing").put("timing_failures",timingFailures).put("assertions",checks).put("quick",quick).put("sessions",sessions).put("exports",exports)
-                .put("scope","Real emulator camera/microphone through original Pro service/Recorder/OverlayEffect/PersistentFlip; HD video/MP4-AAC fixture with VGA preview and UI state/display observers detached because emulator FHD is unavailable. Production FHD, preview and profile-selected audio unchanged. Encoded orientation tested; automatic UI rotation, speech/lip sync and 90 minutes require Samsung.");
+                .put("scope","Real emulator camera/microphone through original Pro service/Recorder/OverlayEffect/PersistentFlip; HD video fixture with VGA preview and UI state/display observers detached because emulator FHD is unavailable. Recorder selects the original device-profile audio. Production FHD/preview/audio unchanged. Encoded orientation tested; automatic UI rotation, speech/lip sync and 90 minutes require Samsung.");
             // Collect every session before failing timing assertions, so a cadence
             // failure cannot prevent the 20-flip, pause and landscape checks.
             result.putString("report",report.toString());result.putString("stream",passed?"VIDEO_CONTINUITY_PASS\n":"VIDEO_CONTINUITY_FAIL\n");finish(passed?-1:1,result);

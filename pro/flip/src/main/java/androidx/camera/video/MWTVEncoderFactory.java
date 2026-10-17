@@ -26,16 +26,4 @@ public final class MWTVEncoderFactory {
         });
         return builder.build();
     }
-    /** Instrumentation fixture only: the emulator's HD CamcorderProfile chooses
-     * AMR, whereas the Samsung FHD target normally uses MP4/AAC. Production calls
-     * build(), preserving its original profile-selected audio and container.
-     */
-    public static Recorder buildValidation(Recorder.Builder builder) {
-        Recorder recorder=build(builder);
-        try {
-            MediaSpec spec=recorder.mMediaSpec.fetchData().get();
-            recorder.mMediaSpec.setState(spec.toBuilder().setOutputFormat(MediaSpec.OUTPUT_FORMAT_MPEG_4).build());
-        } catch(Exception e) {throw new IllegalStateException("Initialize HD/AAC validation fixture",e);}
-        return recorder;
-    }
 }

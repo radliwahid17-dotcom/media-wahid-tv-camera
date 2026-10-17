@@ -74,8 +74,6 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Install, launch, photos and native camera regression on Android 11
         uses: reactivecircus/android-emulator-runner@v2
-        env:
-          MWTV_DIAGNOSTIC_QUICK: 'true'
         with:
           api-level: 30
           arch: x86_64

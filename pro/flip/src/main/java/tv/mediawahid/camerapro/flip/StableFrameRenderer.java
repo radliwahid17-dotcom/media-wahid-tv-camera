@@ -55,6 +55,7 @@ final class StableFrameRenderer {
     private SurfaceRequest persistent;
     private Surface encoderSurface;
     private Input current;
+    private Input liveInput;
     private boolean closing, disposed, pendingEncoder, prepared, paused, fresh, hasFrame;
     private boolean waiting, expectedFront, transitioning;
     private int minimumRequest;
@@ -127,6 +128,13 @@ final class StableFrameRenderer {
             });
             input.texture.setOnFrameAvailableListener(ignored -> frame(input),handler);
             request.provideSurface(input.surface,executor, result -> {
+                if(liveInput==input) {
+                    if(prepared&&!closing&&!waiting&&!transitioning&&hasFrame) {
+                        makeCurrent(window!=EGL14.EGL_NO_SURFACE?window:scratch);
+                        attach(latestTexture);draw(input.id,true,input.matrix,1f);GLES20.glFlush();
+                    }
+                    liveInput=null;
+                }
                 input.returned=true;
                 input.texture.setOnFrameAvailableListener(null);
                 input.texture.release(); input.surface.release();
@@ -157,8 +165,8 @@ final class StableFrameRenderer {
         schedule();
     }); }
     void handoff(boolean front, Runnable callback) { post(() -> {
-        if (hasFrame) {
-            makeCurrent(window!=EGL14.EGL_NO_SURFACE?window:scratch); attach(frozenTexture); draw(latestTexture,false,identity,1f);
+        if (hasFrame&& !((waiting||transitioning)&&liveInput==null)) {
+            makeCurrent(window!=EGL14.EGL_NO_SURFACE?window:scratch); attach(frozenTexture); drawLive(1f);GLES20.glFlush();
         }
         waiting=true; transitioning=false; expectedFront=front; minimumRequest=requestId+1; ready=callback;
         handoffStart=System.nanoTime(); gapStartCapture=lastLiveCapture;
@@ -172,6 +180,7 @@ final class StableFrameRenderer {
         final Surface surface;
         final Timebase timebase;
         final boolean front;
+        final float[] matrix=new float[16];
         boolean transformed, seen, returned;
         int rotation;
         long lastTimestamp = Long.MIN_VALUE;
@@ -204,7 +213,12 @@ final class StableFrameRenderer {
             Matrix.rotateM(rotationMatrix,0,input.rotation-initialRotation,0f,0f,1f);
             Matrix.translateM(rotationMatrix,0,-.5f,-.5f,0f);
             Matrix.multiplyMM(combined,0,transform,0,rotationMatrix,0);
-            attach(latestTexture); draw(input.id,true,combined,1f); checkGl();
+            System.arraycopy(combined,0,input.matrix,0,16);
+            // Keep a fallback for an unexpected producer return. Normal live
+            // frames go directly from OES to the encoder, avoiding a full-frame
+            // RGBA copy and its GPU fence on every camera callback.
+            if(!hasFrame) {attach(latestTexture);draw(input.id,true,input.matrix,1f);checkGl();}
+            liveInput=input;
             hasFrame=true; serial++;
             long now=System.nanoTime(), captured=timestamp;
             if (input.timebase==Timebase.REALTIME) captured-=SystemClock.elapsedRealtimeNanos()-now;
@@ -268,9 +282,9 @@ final class StableFrameRenderer {
                     float mix=Math.min(1f,(now-transitionStart)/(float)BLEND_NS);
                     draw(frozenTexture,false,identity,1f);
                     GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);
-                    draw(latestTexture,false,identity,mix);GLES20.glDisable(GLES20.GL_BLEND);
+                    drawLive(mix);GLES20.glDisable(GLES20.GL_BLEND);
                     if (mix>=1f) finishHandoff();
-                } else draw(latestTexture,false,identity,1f);
+                } else drawLive(1f);
                 // Canvas bitmaps contain premultiplied alpha. One overlay after
                 // the camera blend keeps both logos stationary and unduplicated.
                 GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_ONE,GLES20.GL_ONE_MINUS_SRC_ALPHA);
@@ -299,6 +313,10 @@ final class StableFrameRenderer {
         Runnable callback=ready;ready=null;
         Log.i(TAG,"Handoff composited durationNs="+(System.nanoTime()-handoffStart)+" heldFrames="+repeated);
         if (callback!=null) callback.run();
+    }
+    private void drawLive(float alpha) {
+        if(liveInput!=null&&!liveInput.returned)draw(liveInput.id,true,liveInput.matrix,alpha);
+        else draw(latestTexture,false,identity,alpha);
     }
     void close() { post(() -> {
         closing=true;prepared=false;ready=null;handler.removeCallbacks(tick);tickPending=false;
