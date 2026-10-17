@@ -437,8 +437,11 @@ final class StableFrameRenderer {
         // the GLES2 fallback remains available when fragment highp is absent.
         String varying="varying "+precision+" vec2 coord;";
         String vertex="attribute vec4 position;attribute vec4 uv;uniform mat4 transform;"+varying+"void main(){gl_Position=position;coord=(transform*uv).xy;}";
-        String fragment=(oes?"#extension GL_OES_EGL_image_external : require\n":"")+"precision "+precision+" float;uniform "+(oes?"samplerExternalOES":"sampler2D")+" image;uniform float alpha;"+varying+"void main(){vec4 c=texture2D(image,coord);gl_FragColor=vec4(c.rgb,c.a*alpha);}";
-        Log.i("MWTV.ImageQuality","Texture shader oes="+oes+" precision="+precision+" highpBits="+bits[0]);
+        // Only UVs need subpixel highp. The source and cached artwork are 8-bit
+        // SDR, so mediump colour/alpha math retains their precision without
+        // promoting the entire full-frame compositor to 32-bit arithmetic.
+        String fragment=(oes?"#extension GL_OES_EGL_image_external : require\n":"")+"precision mediump float;uniform "+(oes?"samplerExternalOES":"sampler2D")+" image;uniform float alpha;"+varying+"void main(){vec4 c=texture2D(image,coord);gl_FragColor=vec4(c.rgb,c.a*alpha);}";
+        Log.i("MWTV.ImageQuality","Texture shader oes="+oes+" uvPrecision="+precision+" colourPrecision=mediump highpBits="+bits[0]);
         int result=GLES20.glCreateProgram(),vs=shader(GLES20.GL_VERTEX_SHADER,vertex),fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment);
         GLES20.glAttachShader(result,vs);GLES20.glAttachShader(result,fs);
         GLES20.glBindAttribLocation(result,0,"position");GLES20.glBindAttribLocation(result,1,"uv");GLES20.glLinkProgram(result);

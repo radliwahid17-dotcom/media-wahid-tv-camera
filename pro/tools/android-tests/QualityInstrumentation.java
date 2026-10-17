@@ -81,6 +81,36 @@ public final class QualityInstrumentation extends Instrumentation {
                 cases.put(new JSONObject().put("width",ow).put("height",oh).put("rotation",rotation).put("mean_channel_error",mean).put("max_channel_error",max));
                 check(mean<2.5&&max<=12,"FHD pixel detail preserved: rotation="+rotation+" mean="+mean+" max="+max);
             }
+            // Diagnostic comparison only: exact pre-1.0.5 shader precision.
+            // Never substitute it for the installed production shader above.
+            Method compile=renderer.getDeclaredMethod("shader",int.class,String.class);compile.setAccessible(true);
+            int reference=GLES20.glCreateProgram();
+            int vs=(Integer)compile.invoke(null,GLES20.GL_VERTEX_SHADER,"attribute vec4 position;attribute vec4 uv;uniform mat4 transform;varying vec2 coord;void main(){gl_Position=position;coord=(transform*uv).xy;}");
+            int fs=(Integer)compile.invoke(null,GLES20.GL_FRAGMENT_SHADER,"precision mediump float;uniform sampler2D image;uniform float alpha;varying vec2 coord;void main(){vec4 c=texture2D(image,coord);gl_FragColor=vec4(c.rgb,c.a*alpha);}");
+            try {
+                GLES20.glAttachShader(reference,vs);GLES20.glAttachShader(reference,fs);
+                GLES20.glBindAttribLocation(reference,0,"position");GLES20.glBindAttribLocation(reference,1,"uv");GLES20.glLinkProgram(reference);
+                int[] linked=new int[1];GLES20.glGetProgramiv(reference,GLES20.GL_LINK_STATUS,linked,0);check(linked[0]!=0,"Reference shader links");
+                JSONObject cost=new JSONObject();
+                for(int candidate:new int[]{reference,program}){
+                    GLES20.glUseProgram(candidate);float[] identity=new float[16];Matrix.setIdentityM(identity,0);
+                    GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(candidate,"transform"),1,false,identity,0);
+                    GLES20.glUniform1f(GLES20.glGetUniformLocation(candidate,"alpha"),1f);GLES20.glUniform1i(GLES20.glGetUniformLocation(candidate,"image"),0);
+                    GLES20.glViewport(0,0,w,h);
+                    for(int warm=0;warm<2;warm++){GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);GLES20.glFinish();}
+                    long start=System.nanoTime();for(int sample=0;sample<5;sample++){GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);GLES20.glFinish();}
+                    cost.put(candidate==reference?"reference_mediump_mean_ns":"production_mean_ns",(System.nanoTime()-start)/5);
+                    if(candidate==reference){
+                        ByteBuffer pixels=ByteBuffer.allocateDirect(w*h*4);GLES20.glReadPixels(0,0,w,h,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,pixels);
+                        long error=0;int maximum=0;
+                        for(int i=0;i<w*h;i++)for(int channel=0;channel<3;channel++){
+                            int delta=Math.abs((source.get(i*4+channel)&255)-(pixels.get(i*4+channel)&255));error+=delta;maximum=Math.max(maximum,delta);
+                        }
+                        report.put("reference_mediump_detail",new JSONObject().put("mean_channel_error",error/(double)(w*h*3)).put("max_channel_error",maximum));
+                    }
+                }
+                check(GLES20.glGetError()==0,"Shader diagnostic GL state");report.put("synthetic_shader_cost",cost);
+            } finally {GLES20.glDeleteProgram(reference);GLES20.glDeleteShader(vs);GLES20.glDeleteShader(fs);}
             return report.put("result","passed").put("assertions",checks).put("cases",cases)
                 .put("scope","Installed production OES/RGBA shader compilation and uncompressed one-pixel Full HD RGBA detail at four rotations. Not camera OES pixels, encoder compression, speech sync, or physical Samsung/photo equivalence.");
         } finally {

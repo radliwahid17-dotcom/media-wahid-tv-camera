@@ -24,6 +24,7 @@ assert line is not None,result+diagnostics
 report=json.loads(line.split('=',1)[1])
 report['native_result']=report['result']
 report['frame_bridge_log']=[line for line in log.splitlines() if 'MWTV.FrameBridge' in line and any(term in line for term in ['New camera frame','Handoff composited','Session frames=','Frame bridge error','Muxer timestamps adjusted='])]
+report['image_quality_log']=[line for line in log.splitlines() if 'MWTV.ImageQuality' in line]
 report['result']='watermark-validation-pending'
 (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
 out=r/'artifacts/video-evidence';out.mkdir(exist_ok=True)

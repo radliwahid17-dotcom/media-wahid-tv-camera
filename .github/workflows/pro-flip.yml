@@ -98,6 +98,7 @@ jobs:
                       if name == 'video-detail':
                           print('::notice title=Full HD pixel detail::' + json.dumps(result).replace('%', '%25'))
                       if name == 'video-device':
+                          print('::notice title=Camera and encoder quality configuration::' + json.dumps(result.get('image_quality_log', [])).replace('%', '%25'))
                           compact = {'result': result['result'], 'assertions': result['assertions'], 'quick': result['quick'], 'timing_failures': result.get('timing_failures', []),
                                      'sessions': [{key: session.get(key) for key in ['name', 'orientation', 'video', 'audio', 'flips', 'manual_pause', 'watermark_pixels', 'animated_emulator_playback_difference']} for session in result['sessions']],
                                      'frame_bridge_log': result.get('frame_bridge_log', []), 'scope': result['scope']}
