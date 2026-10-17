@@ -50,6 +50,7 @@ final class StableFrameRenderer {
     private EGLConfig config;
     private int oesProgram, imageProgram, width, height, latestTexture, frozenTexture, fbo;
     private int oesTransform, oesAlpha, imageAlpha, imageTransform, logoTexture;
+    private int logoLeft,logoTop,logoRight,logoBottom;
     private boolean orientationReady, logoDirty=true;
     private int initialRotation, requestId;
     private SurfaceRequest persistent;
@@ -270,6 +271,19 @@ final class StableFrameRenderer {
                 if(logoDirty) {
                     Bitmap bitmap=artwork.render(width,height,initialRotation);
                     try {
+                        // Skip transparent fragments without changing artwork.
+                        // Use actual alpha bounds so every original size/opacity
+                        // setting and encoder rotation keeps the same pixels.
+                        int[] row=new int[width];int left=width,top=height,right=0,bottom=0;
+                        for(int y=0;y<height;y++) {
+                            bitmap.getPixels(row,0,width,0,y,width,1);
+                            for(int x=0;x<width;x++) if((row[x]>>>24)!=0) {
+                                left=Math.min(left,x);right=Math.max(right,x+1);
+                                top=Math.min(top,y);bottom=Math.max(bottom,y+1);
+                            }
+                        }
+                        logoLeft=Math.max(0,left-2);logoTop=Math.max(0,top-2);
+                        logoRight=Math.min(width,right+2);logoBottom=Math.min(height,bottom+2);
                         if(logoTexture==0)logoTexture=texture(GLES20.GL_TEXTURE_2D);
                         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,logoTexture);
                         GLUtils.texImage2D(GLES20.GL_TEXTURE_2D,0,bitmap,0);logoDirty=false;
@@ -287,8 +301,13 @@ final class StableFrameRenderer {
                 } else drawLive(1f);
                 // Canvas bitmaps contain premultiplied alpha. One overlay after
                 // the camera blend keeps both logos stationary and unduplicated.
-                GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_ONE,GLES20.GL_ONE_MINUS_SRC_ALPHA);
-                draw(logoTexture,false,bitmapTransform,1f);GLES20.glDisable(GLES20.GL_BLEND);
+                if(logoRight>logoLeft&&logoBottom>logoTop) {
+                    GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
+                    GLES20.glScissor(logoLeft,height-logoBottom,logoRight-logoLeft,logoBottom-logoTop);
+                    GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_ONE,GLES20.GL_ONE_MINUS_SRC_ALPHA);
+                    draw(logoTexture,false,bitmapTransform,1f);
+                    GLES20.glDisable(GLES20.GL_BLEND);GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
+                }
                 checkGl();
                 // Stamp after rendering, so a slow GPU upload cannot arrive behind
                 // buffers repeated by the encoder's native surface source.
