@@ -32,7 +32,8 @@ Gradle wrapper memverifikasi checksum distribusi Gradle.
 Workflow [Pro Quality and Flip APK](https://github.com/radliwahid17-dotcom/media-wahid-tv-camera/actions/workflows/pro-flip.yml) menjalankan build,
 lint delta Java, 18 unit test, pemeriksaan struktur/resource, upload artifact, lalu
 tujuh cold launch, 37 assertion adapter state, dan 32 kasus renderer logo pada
-emulator Android 11, kemudian memeriksa empat foto offline dari kamera depan/belakang
+emulator Android 11, 15 assertion detail shader Full HD pada empat rotasi,
+kemudian memeriksa empat foto offline dari kamera depan/belakang
 dan video HD dari service asli dengan 20 flip dalam tiga menit. Lint tidak mengaudit ulang source
 aplikasi asli yang tidak tersedia. Run CI yang belum dijalankan tidak dianggap lulus.
 
