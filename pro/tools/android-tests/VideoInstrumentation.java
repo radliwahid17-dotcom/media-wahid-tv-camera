@@ -121,16 +121,7 @@ public final class VideoInstrumentation extends Instrumentation {
         record(name,template,duration,count,manualPause,false);
     }
     private void record(String name,int template,int duration,int count,boolean manualPause,boolean landscape) throws Exception {
-        int rotation=landscape?Surface.ROTATION_90:Surface.ROTATION_0;
-        // Keep the real display aligned with this fixture before START locks it.
-        // Merely changing service.rotation lets MainActivity rotate/rebuild during
-        // recording, attach a preview again, then request unsupported FHD after STOP.
-        check(getUiAutomation().setRotation(rotation),"Set emulator display rotation");
-        waitFor("display and UI rotation",()->main(()->
-            activity.getWindowManager().getDefaultDisplay().getRotation()==rotation
-            &&(activity.getResources().getConfiguration().orientation==2)==landscape),10000);
-        Thread.sleep(500);
-        prepare(template,rotation);
+        prepare(template,landscape?Surface.ROTATION_90:Surface.ROTATION_0);
         main(()->{call(service,"startRecording");return null;});
         waitFor("recording started",()->value("getPhase").toString().equals("RECORDING"),20000);
         Object recording=main(()->field(service,"recording"));
@@ -182,7 +173,8 @@ public final class VideoInstrumentation extends Instrumentation {
             check(pts.size()>10,"Encoded samples present "+mime);long maxGap=0;
             for(int i=1;i<pts.size();i++){check(pts.get(i)>pts.get(i-1),"Unique forward PTS "+mime);maxGap=Math.max(maxGap,pts.get(i)-pts.get(i-1));}
             long span=pts.get(pts.size()-1)-pts.get(0);
-            JSONObject info=new JSONObject().put("mime",mime).put("samples",pts.size()).put("duration_us",span).put("max_pts_gap_us",maxGap);
+            JSONObject info=new JSONObject().put("mime",mime).put("samples",pts.size()).put("duration_us",span).put("max_pts_gap_us",maxGap)
+                .put("first_pts_us",pts.get(0)).put("last_pts_us",pts.get(pts.size()-1));
             if(mime.startsWith("video/")){videoDuration=span;info.put("width",format.getInteger(MediaFormat.KEY_WIDTH)).put("height",format.getInteger(MediaFormat.KEY_HEIGHT));timingCheck(maxGap<250000,name+": encoder timestamp gap <250000 us: actual="+maxGap);report.put("video",info);}
             else {audioDuration=span;timingCheck(maxGap<100000,name+": microphone packet gap <100000 us: actual="+maxGap);report.put("audio",info);}
         }
@@ -213,13 +205,25 @@ public final class VideoInstrumentation extends Instrumentation {
             Context context=getTargetContext();loader=context.getClassLoader();
             activity=startActivitySync(new Intent().setClassName(context,"tv.mediawahid.camerapro.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitFor("bound original service",()->{service=main(()->field(activity,"cameraService"));return service!=null&&main(()->field(service,"provider"))!=null;},30000);
+            main(()->{
+                // Service/encoded-orientation fixture, not a full FHD UI test.
+                // The normal UI observer rotates the Activity for recording and
+                // reattaches its production FHD preview after STOP. This emulator
+                // cannot satisfy that profile. Keep its actual PreviewView surface,
+                // while isolating only that observer/display policy in the harness.
+                ((androidx.lifecycle.LiveData<?>)call(service,"getState")).removeObservers((LifecycleOwner)activity);
+                android.hardware.display.DisplayManager displays=(android.hardware.display.DisplayManager)activity.getSystemService(Context.DISPLAY_SERVICE);
+                displays.unregisterDisplayListener((android.hardware.display.DisplayManager.DisplayListener)field(activity,"displayListener"));
+                field(activity,"displayListenerRegistered",false);
+                return null;
+            });
             record("basic-template-a",1,quick?12:30,2,false);
             record("stress-template-b",2,quick?15:180,quick?2:20,false);
             record("manual-pause",1,quick?8:12,1,true);
             record("landscape-template-a",1,quick?8:15,2,false,true);
             boolean passed=timingFailures.length()==0;
             JSONObject report=new JSONObject().put("result",passed?"passed":"failed-timing").put("timing_failures",timingFailures).put("assertions",checks).put("quick",quick).put("sessions",sessions).put("exports",exports)
-                .put("scope","Real emulator camera and microphone tracks through original Pro service/Recorder/OverlayEffect/PersistentFlip; HD fixture only because emulator FHD profile is unavailable. Production FHD unchanged. Silent emulator microphone does not validate physical speech or Samsung audio sync. 90 minutes not tested.");
+                .put("scope","Real emulator camera/microphone through original Pro service/Recorder/OverlayEffect/PersistentFlip; HD service fixture with UI state/display observers detached because emulator FHD is unavailable. Encoded portrait/landscape tested; automatic UI rotation and production FHD require Samsung. Silent microphone does not validate speech/lip sync. 90 minutes untested.");
             // Collect every session before failing timing assertions, so a cadence
             // failure cannot prevent the 20-flip, pause and landscape checks.
             result.putString("report",report.toString());result.putString("stream",passed?"VIDEO_CONTINUITY_PASS\n":"VIDEO_CONTINUITY_FAIL\n");finish(passed?-1:1,result);
@@ -231,9 +235,6 @@ public final class VideoInstrumentation extends Instrumentation {
                     .put("scope","Partial native emulator HD evidence; failed functional check. Physical Samsung and 90 minutes untested.").toString());
             } catch(JSONException ignored) {result.putString("partial",new JSONObject().toString());}
             finish(1,result);
-        } finally {
-            try {getUiAutomation().setRotation(UiAutomation.ROTATION_UNFREEZE);}
-            catch(Exception e) {Log.w("MWTV.VideoTest","Restore emulator rotation",e);}
         }
     }
 }

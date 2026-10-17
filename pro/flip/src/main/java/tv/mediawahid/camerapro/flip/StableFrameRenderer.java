@@ -28,6 +28,7 @@ import java.util.function.Consumer;
 final class StableFrameRenderer {
     private static final String TAG = "MWTV.FrameBridge";
     private static final long BLEND_NS = 120_000_000L;
+    private static final long HEARTBEAT_NS = 100_000_000L;
     private static final int EGL_RECORDABLE_ANDROID = 0x3142;
     private final HandlerThread thread = new HandlerThread("MWTV-EncoderBridge");
     private final Handler handler;
@@ -54,6 +55,7 @@ final class StableFrameRenderer {
     private int minimumRequest;
     private long transitionStart, handoffStart, lastLiveCapture, gapStartCapture, firstPts, lastPts, maxPtsGap;
     private long presented, repeated, lastPresentedSerial = -1, serial;
+    private long lastSwapClock;
     private Runnable ready;
     private final Runnable tick = this::pump;
 
@@ -124,6 +126,7 @@ final class StableFrameRenderer {
     void prepare() { post(() -> {
         prepared=true; paused=false; fresh=false; cadence.reset();
         presented=0; repeated=0; firstPts=0; lastPts=0; maxPtsGap=0; lastPresentedSerial=-1;
+        lastSwapClock=0;
     }); }
     void stopPumping() { post(() -> {
         prepared=false; handler.removeCallbacks(tick); waiting=false; transitioning=false; ready=null;
@@ -187,7 +190,11 @@ final class StableFrameRenderer {
             if (input.timebase==Timebase.REALTIME) captured-=SystemClock.elapsedRealtimeNanos()-now;
             if (captured<=0 || captured>now || now-captured>1_000_000_000L) captured=now;
             lastLiveCapture=captured;
-            if (prepared&&!fresh) { cadence.anchor(now,captured); fresh=true; }
+            // This is a composed source, with its own held/blended frames. Use the
+            // same monotonic clock as Recorder's microphone and pause boundaries.
+            // Anchoring to a delayed first sensor frame would preserve that startup
+            // lag for the entire session, including after later camera handoffs.
+            if (prepared&&!fresh) { cadence.anchor(now,now); fresh=true; }
             if (waiting && input.generation>=minimumRequest && input.front==expectedFront) {
                 waiting=false; transitioning=true; transitionStart=now;
                 Log.i(TAG,"New camera frame targetFront="+input.front+" handoffNs="+(now-handoffStart)
@@ -203,11 +210,16 @@ final class StableFrameRenderer {
     }
     private void pump() {
         if (closing || !prepared || paused || !fresh || !hasFrame || window==EGL14.EGL_NO_SURFACE) return;
-        // The configured MediaCodec surface source repeats its last buffer when
-        // input stalls. Leave GPU time for opening the next camera instead of uploading
-        // identical pixels; new camera frames and blend steps schedule us again.
-        if (waiting || (!transitioning && lastPresentedSerial==serial)) return;
-        long now=System.nanoTime(); long pts=cadence.presentation(now);
+        long now=System.nanoTime();
+        // Surface-source repetition has a finite repeat count on some codecs.
+        // Refresh held input every 100 ms so a long sensor handoff cannot exhaust
+        // that budget. Normal live 30 FPS inputs need no extra duplicate uploads.
+        if ((waiting || (!transitioning && lastPresentedSerial==serial))
+                && lastSwapClock!=0 && now-lastSwapClock<HEARTBEAT_NS) {
+            handler.postDelayed(tick,Math.max(1L,(HEARTBEAT_NS-(now-lastSwapClock)+999_999L)/1_000_000L));
+            return;
+        }
+        long pts=cadence.presentation(now);
         try {
             if (pts!=FrameCadence.NOT_DUE) {
                 makeCurrent(window); GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0);
@@ -227,6 +239,7 @@ final class StableFrameRenderer {
                 if (updated!=FrameCadence.NOT_DUE) pts=updated;
                 require(EGLExt.eglPresentationTimeANDROID(display,window,pts),"Encoder presentation timestamp");
                 require(EGL14.eglSwapBuffers(display,window),"Encoder swap");
+                lastSwapClock=System.nanoTime();
                 if (presented==0) firstPts=pts;
                 else maxPtsGap=Math.max(maxPtsGap,pts-lastPts);
                 lastPts=pts;presented++;
