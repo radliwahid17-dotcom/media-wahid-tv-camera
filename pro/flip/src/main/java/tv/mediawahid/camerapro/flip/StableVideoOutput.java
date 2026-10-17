@@ -61,7 +61,11 @@ public final class StableVideoOutput implements VideoOutput {
         } catch (Exception failure) { throw new IllegalStateException("Initial Recorder stream", failure); }
         idleStream = recorderStream;
         stream = MutableStateObservable.withInitialState(recorderStream);
-        renderer = new StableFrameRenderer(this::error);
+        renderer = new StableFrameRenderer(this::error,(w,h,r) -> {
+            Object current=owner.get();
+            if(current==null)throw new IllegalStateException("Recording owner unavailable");
+            return VideoWatermarks.render(current,w,h,r);
+        });
         recorder.getStreamInfo().addObserver(command -> main.post(command), streamObserver);
     }
     private StreamInfo cameraStream(StreamInfo info) {

@@ -81,6 +81,7 @@ public final class VideoInstrumentation extends Instrumentation {
             values.put(3,type("tv.mediawahid.camerapro.RecordingPhase").getField("IDLE").get(null));
             values.put(4,false);values.put(5,true);values.put(23,null);values.put(24,null);values.put(26,null);values.put(28,false);values.put(29,false);values.put(30,0);
             publish(values);call(service,"setTemplate",template);
+            type("tv.mediawahid.camerapro.flip.VideoWatermarks").getMethod("select",Object.class).invoke(null,service);
             Object pipeline=field(service,"pipeline");Object unit=type("kotlin.Unit").getField("INSTANCE").get(null);
             Class<?> f1=type("kotlin.jvm.functions.Function1"),f0=type("kotlin.jvm.functions.Function0");
             Object onError=Proxy.newProxyInstance(loader,new Class<?>[]{f1},(p,m,a)->{throw new AssertionError("Original watermark callback",(Throwable)a[0]);});

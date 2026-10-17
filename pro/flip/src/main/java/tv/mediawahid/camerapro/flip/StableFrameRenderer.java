@@ -2,6 +2,7 @@ package tv.mediawahid.camerapro.flip;
 
 import android.annotation.SuppressLint;
 import android.graphics.SurfaceTexture;
+import android.graphics.Bitmap;
 import android.opengl.*;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -20,7 +21,7 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /** Fixed encoder endpoint; camera-owned producer endpoints can be replaced independently.
- * Inputs are already watermarked by the original OverlayEffect. Two fixed RGBA buffers
+ * Two fixed RGBA camera buffers plus a cached original-artwork texture
  * permit a 120 ms blend once the new sensor supplies real frames. Held frames while a
  * sensor is unavailable are measured/logged, never represented as fresh camera frames.
  */
@@ -34,18 +35,22 @@ final class StableFrameRenderer {
     private final Handler handler;
     private final Executor executor;
     private final Consumer<Throwable> error;
+    interface Artwork {Bitmap render(int width,int height,int rotation) throws Exception;}
+    private final Artwork artwork;
     private final FrameCadence cadence = new FrameCadence(30);
     private final Set<Input> inputs = new HashSet<>();
     private final FloatBuffer vertices = floats(-1,-1, 1,-1, -1,1, 1,1);
     private final FloatBuffer coords = floats(0,0, 1,0, 0,1, 1,1);
     private final float[] identity = new float[16], transform = new float[16], rotationMatrix = new float[16], combined = new float[16];
+    private final float[] bitmapTransform=new float[16];
     private EGLDisplay display = EGL14.EGL_NO_DISPLAY;
     private EGLContext context = EGL14.EGL_NO_CONTEXT;
     private EGLSurface scratch = EGL14.EGL_NO_SURFACE, window = EGL14.EGL_NO_SURFACE;
     private EGLSurface currentSurface = EGL14.EGL_NO_SURFACE;
     private EGLConfig config;
     private int oesProgram, imageProgram, width, height, latestTexture, frozenTexture, fbo;
-    private int oesTransform, oesAlpha, imageAlpha;
+    private int oesTransform, oesAlpha, imageAlpha, imageTransform, logoTexture;
+    private boolean orientationReady, logoDirty=true;
     private int initialRotation, requestId;
     private SurfaceRequest persistent;
     private Surface encoderSurface;
@@ -59,9 +64,10 @@ final class StableFrameRenderer {
     private Runnable ready;
     private final Runnable tick = this::pump;
 
-    StableFrameRenderer(Consumer<Throwable> error) {
-        this.error = error;
+    StableFrameRenderer(Consumer<Throwable> error,Artwork artwork) {
+        this.error = error;this.artwork=artwork;
         Matrix.setIdentityM(identity,0);
+        Matrix.setIdentityM(bitmapTransform,0);bitmapTransform[5]=-1f;bitmapTransform[13]=1f;
         thread.start(); handler = new Handler(thread.getLooper());
         executor = command -> { if (!handler.post(command)) error.accept(new IllegalStateException("Renderer thread closed")); };
         post(this::initialize);
@@ -74,7 +80,7 @@ final class StableFrameRenderer {
             catch (Exception e) { error.accept(e); }
         });
     }
-    void initialRotation(int degrees) { initialRotation = degrees; } // Only called on this GL thread.
+    void initialRotation(int degrees) { initialRotation = degrees;orientationReady=true;logoDirty=true; } // GL thread.
     void encoder(SurfaceRequest request) {
         post(() -> {
             persistent = request; width=request.getResolution().getWidth(); height=request.getResolution().getHeight();
@@ -107,6 +113,7 @@ final class StableFrameRenderer {
             inputs.add(input); current=input;
             Log.i(TAG,"Input provided generation="+input.generation+" front="+input.front+" outstanding="+inputs.size());
             request.setTransformationInfoListener(executor, info -> {
+                if(input.returned)return;
                 input.rotation=info.getRotationDegrees(); input.transformed=true;
                 Log.i(TAG,"Input transform generation="+input.generation+" rotation="+input.rotation);
                 if (initial!=null) initial.accept(info);
@@ -124,7 +131,7 @@ final class StableFrameRenderer {
         });
     }
     void prepare() { post(() -> {
-        prepared=true; paused=false; fresh=false; cadence.reset();
+        prepared=true; paused=false; fresh=false; logoDirty=true; cadence.reset();
         presented=0; repeated=0; firstPts=0; lastPts=0; maxPtsGap=0; lastPresentedSerial=-1;
         lastSwapClock=0;
     }); }
@@ -134,8 +141,11 @@ final class StableFrameRenderer {
     }); }
     void pause(boolean value) { post(() -> {
         paused=value;
-        if (value) { handler.removeCallbacks(tick); if (transitioning) finishHandoff(); }
-        else schedule();
+        // EncoderImpl owns manual pause ranges and needs input crossing the pause
+        // boundary to suspend/drop buffers correctly. Continue composed input;
+        // the PAUSED Recorder still excludes those video/audio samples.
+        if (value&&transitioning) finishHandoff();
+        schedule();
     }); }
     void handoff(boolean front, Runnable callback) { post(() -> {
         if (hasFrame) {
@@ -177,8 +187,8 @@ final class StableFrameRenderer {
             if (!input.seen) {input.seen=true;Log.i(TAG,"Input first frame generation="+input.generation+" front="+input.front+" transformed="+input.transformed);}
             if (!input.transformed) return;
             input.texture.getTransformMatrix(transform);
-            // Transform the incoming buffer into the initial encoder orientation. The original
-            // OverlayEffect has already drawn logos in that buffer's upright coordinate system.
+            // Normalize raw camera buffers to the initial encoder orientation.
+            // Original artwork is composed once after normalization/blending.
             Matrix.setIdentityM(rotationMatrix,0);
             Matrix.translateM(rotationMatrix,0,.5f,.5f,0f);
             Matrix.rotateM(rotationMatrix,0,input.rotation-initialRotation,0f,0f,1f);
@@ -205,11 +215,11 @@ final class StableFrameRenderer {
         } catch (Exception e) { error.accept(e); }
     }
     private void schedule() {
-        if (closing || !prepared || paused || !fresh || !hasFrame || window==EGL14.EGL_NO_SURFACE) return;
+        if (closing || !prepared || !fresh || !hasFrame || !orientationReady || window==EGL14.EGL_NO_SURFACE) return;
         handler.removeCallbacks(tick); handler.post(tick);
     }
     private void pump() {
-        if (closing || !prepared || paused || !fresh || !hasFrame || window==EGL14.EGL_NO_SURFACE) return;
+        if (closing || !prepared || !fresh || !hasFrame || !orientationReady || window==EGL14.EGL_NO_SURFACE) return;
         long now=System.nanoTime();
         // Surface-source repetition has a finite repeat count on some codecs.
         // Refresh held input every 100 ms so a long sensor handoff cannot exhaust
@@ -222,7 +232,16 @@ final class StableFrameRenderer {
         long pts=cadence.presentation(now);
         try {
             if (pts!=FrameCadence.NOT_DUE) {
-                makeCurrent(window); GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0);
+                makeCurrent(window);
+                if(logoDirty) {
+                    Bitmap bitmap=artwork.render(width,height,initialRotation);
+                    try {
+                        if(logoTexture==0)logoTexture=texture(GLES20.GL_TEXTURE_2D);
+                        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,logoTexture);
+                        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D,0,bitmap,0);logoDirty=false;
+                    } finally {bitmap.recycle();}
+                }
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0);
                 GLES20.glViewport(0,0,width,height);
                 if (waiting) draw(frozenTexture,false,identity,1f);
                 else if (transitioning) {
@@ -232,6 +251,10 @@ final class StableFrameRenderer {
                     draw(latestTexture,false,identity,mix);GLES20.glDisable(GLES20.GL_BLEND);
                     if (mix>=1f) finishHandoff();
                 } else draw(latestTexture,false,identity,1f);
+                // Canvas bitmaps contain premultiplied alpha. One overlay after
+                // the camera blend keeps both logos stationary and unduplicated.
+                GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_ONE,GLES20.GL_ONE_MINUS_SRC_ALPHA);
+                draw(logoTexture,false,bitmapTransform,1f);GLES20.glDisable(GLES20.GL_BLEND);
                 checkGl();
                 // Stamp after rendering, so a slow GPU upload cannot arrive behind
                 // buffers repeated by the encoder's native surface source.
@@ -266,7 +289,7 @@ final class StableFrameRenderer {
     private void disposeWhenReturned() {
         if (!closing||disposed||!inputs.isEmpty()||pendingEncoder) return;
         makeCurrent(scratch);
-        if(latestTexture!=0) GLES20.glDeleteTextures(2,new int[]{latestTexture,frozenTexture},0);
+        if(latestTexture!=0) GLES20.glDeleteTextures(3,new int[]{latestTexture,frozenTexture,logoTexture},0);
         if(fbo!=0) GLES20.glDeleteFramebuffers(1,new int[]{fbo},0);
         if(oesProgram!=0) GLES20.glDeleteProgram(oesProgram);
         if(imageProgram!=0) GLES20.glDeleteProgram(imageProgram);
@@ -290,6 +313,7 @@ final class StableFrameRenderer {
         oesTransform=GLES20.glGetUniformLocation(oesProgram,"transform");
         oesAlpha=GLES20.glGetUniformLocation(oesProgram,"alpha");
         imageAlpha=GLES20.glGetUniformLocation(imageProgram,"alpha");
+        imageTransform=GLES20.glGetUniformLocation(imageProgram,"transform");
         for(int program:new int[]{oesProgram,imageProgram}) {
             GLES20.glUseProgram(program);
             GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(program,"transform"),1,false,identity,0);
@@ -321,7 +345,7 @@ final class StableFrameRenderer {
     private void draw(int texture,boolean oes,float[] matrix,float alpha) {
         int program=oes?oesProgram:imageProgram,target=oes?GLES11Ext.GL_TEXTURE_EXTERNAL_OES:GLES20.GL_TEXTURE_2D;
         GLES20.glUseProgram(program);GLES20.glActiveTexture(GLES20.GL_TEXTURE0);GLES20.glBindTexture(target,texture);
-        if(oes) GLES20.glUniformMatrix4fv(oesTransform,1,false,matrix,0);
+        GLES20.glUniformMatrix4fv(oes?oesTransform:imageTransform,1,false,matrix,0);
         GLES20.glUniform1f(oes?oesAlpha:imageAlpha,alpha);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
     }

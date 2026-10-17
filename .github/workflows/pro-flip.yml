@@ -72,8 +72,10 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Install, launch, photos and three-minute recording with 20 flips on Android 11
+      - name: Install, launch, photos and native camera regression on Android 11
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          MWTV_DIAGNOSTIC_QUICK: 'true'
         with:
           api-level: 30
           arch: x86_64

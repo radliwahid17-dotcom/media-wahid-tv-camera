@@ -23,6 +23,10 @@ def patch(decoded: Path):
     root = decoded / "smali_classes3/tv/mediawahid/camerapro"
     service = root / "CameraRecordingService.smali"
     code = service.read_text()
+    signature='.method private final bindCamera()V'
+    code,count=re.subn(re.escape(signature)+r'(\n    \.locals \d+\n)',
+        lambda m:m.group(0)+f'\n    invoke-static/range {{p0 .. p0}}, {PACKAGE}flip/VideoWatermarks;->select(Ljava/lang/Object;)V\n',code)
+    assert count==1,'Select original photo/preview versus video watermark targets'
     code = once(code, ".method public final switchCamera()V",
                 ".method public final switchCameraOriginal()V")
     code += f"""
@@ -133,6 +137,11 @@ def patch(decoded: Path):
                           flags=re.MULTILINE | re.DOTALL)
     assert count == 1, 'Remove generated placeholder badge'
     store.write_text(code)
+    pipeline=root/'WatermarkPipeline.smali'
+    code=pipeline.read_text()
+    code=once(code,'    const/4 v2, 0x7',f'''    invoke-static {{p0}}, {PACKAGE}flip/VideoWatermarks;->targets(Ljava/lang/Object;)I
+    move-result v2''')
+    pipeline.write_text(code)
     config = decoded / "apktool.yml"
     code = config.read_text()
     code = once(code, "versionCode: 2", "versionCode: 5")

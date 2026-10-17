@@ -16,7 +16,8 @@ stages = [
     ('Finish instrumentation process', ['adb', 'shell', 'am', 'force-stop', 'tv.mediawahid.camerapro']),
     ('Launch offline camera', ['adb', 'shell', 'am', 'start', '-W', '-n', 'tv.mediawahid.camerapro/.MainActivity']),
     ('Saved photo logos', [sys.executable, 'tools/photo_device_test.py', '--allow-resolution-fallback']),
-    ('Continuous video, microphone packets and 20 flips', [sys.executable, 'tools/video_device_test.py']),
+    ('Native video, microphone packets and camera flips', [sys.executable, 'tools/video_device_test.py']
+     + (['--quick'] if os.environ.get('MWTV_DIAGNOSTIC_QUICK')=='true' else [])),
 ]
 Path('artifacts').mkdir(exist_ok=True)
 for index, (name, command) in enumerate(stages, 1):

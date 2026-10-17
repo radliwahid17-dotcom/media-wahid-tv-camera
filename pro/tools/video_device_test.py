@@ -44,11 +44,18 @@ for session in report['sessions']:
             photo=image.convert('RGB')
             media=logo_error(photo,'logo_media_wahid_tv.png',True)
             mosque=logo_error(photo,'logo_masjid.png',False)
+            placement={}
+            if media>=45 or (mosque>=45 if session['template']==1 else mosque<=45):
+                # Diagnose orientation without changing any saved evidence image.
+                for transform in [Image.Transpose.FLIP_TOP_BOTTOM,Image.Transpose.FLIP_LEFT_RIGHT,
+                                  Image.Transpose.ROTATE_90,Image.Transpose.ROTATE_180,Image.Transpose.ROTATE_270]:
+                    candidate=photo.transpose(transform)
+                    placement[transform.name]=[logo_error(candidate,'logo_media_wahid_tv.png',True),logo_error(candidate,'logo_masjid.png',False)]
             if previous is not None:
                 difference=ImageChops.difference(previous,photo).crop((0,photo.height//4,photo.width,photo.height)).resize((64,64))
                 motion.append(round(sum(ImageStat.Stat(difference).mean)/3,3))
             previous=photo.copy()
-        evidence.append({'file':name,'media_error':media,'mosque_error':mosque})
+        evidence.append({'file':name,'media_error':media,'mosque_error':mosque,'placement_diagnostics':placement})
     session['watermark_pixels']=evidence
     session['animated_emulator_playback_difference']=motion
     (r/'artifacts/video-device.json').write_text(json.dumps(report,indent=2)+'\n')
