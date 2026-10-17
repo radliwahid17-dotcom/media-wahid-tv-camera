@@ -3,4 +3,5 @@
     <application android:label="Pro logo validation" android:debuggable="true" />
     <instrumentation android:name="tv.mediawahid.camerapro.logotest.LogoInstrumentation" android:targetPackage="tv.mediawahid.camerapro" />
     <instrumentation android:name="tv.mediawahid.camerapro.logotest.VideoInstrumentation" android:targetPackage="tv.mediawahid.camerapro" />
+    <instrumentation android:name="tv.mediawahid.camerapro.logotest.QualityInstrumentation" android:targetPackage="tv.mediawahid.camerapro" />
 </manifest>

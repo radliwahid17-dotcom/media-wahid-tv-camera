@@ -31,7 +31,7 @@ final class StableFrameRenderer {
     private static final long BLEND_NS = 120_000_000L;
     private static final long HEARTBEAT_NS = 100_000_000L;
     private static final int EGL_RECORDABLE_ANDROID = 0x3142;
-    private final HandlerThread thread = new HandlerThread("MWTV-EncoderBridge");
+    private final HandlerThread thread = new HandlerThread("MWTV-EncoderBridge", android.os.Process.THREAD_PRIORITY_DISPLAY);
     private final Handler handler;
     private final Executor executor;
     private final Consumer<Throwable> error;
@@ -102,6 +102,18 @@ final class StableFrameRenderer {
                         encoderSurface=surface;
                         window=EGL14.eglCreateWindowSurface(display,config,surface,new int[]{EGL14.EGL_NONE},0);
                         require(window!=EGL14.EGL_NO_SURFACE,"Encoder EGL surface");
+                        makeCurrent(window);
+                        int[] actual=new int[2];
+                        require(EGL14.eglQuerySurface(display,window,EGL14.EGL_WIDTH,actual,0)
+                                && EGL14.eglQuerySurface(display,window,EGL14.EGL_HEIGHT,actual,1),"Encoder surface dimensions");
+                        require(actual[0]==width && actual[1]==height,"Encoder surface resized: "+actual[0]+"x"+actual[1]+" expected "+width+"x"+height);
+                        // An encoder surface has no display-vsync requirement. Use
+                        // non-vsync swaps when the EGL config explicitly permits it.
+                        int[] minimum=new int[1];
+                        if(EGL14.eglGetConfigAttrib(display,config,EGL14.EGL_MIN_SWAP_INTERVAL,minimum,0)&&minimum[0]==0
+                                && !EGL14.eglSwapInterval(display,0))
+                            Log.w("MWTV.ImageQuality","Non-vsync swap unavailable; keep supported EGL default");
+                        Log.i("MWTV.ImageQuality","Encoder surface="+width+"x"+height+"; camera is sampled directly, no preview-sized intermediate");
                         schedule();
                     }
                 } catch (Exception e) { if (!closing) error.accept(e); }
@@ -417,8 +429,16 @@ final class StableFrameRenderer {
     }
     private static FloatBuffer floats(float... values) {FloatBuffer result=ByteBuffer.allocateDirect(values.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();result.put(values).position(0);return result;}
     private static int program(boolean oes) {
-        String vertex="attribute vec4 position;attribute vec4 uv;uniform mat4 transform;varying vec2 coord;void main(){gl_Position=position;coord=(transform*uv).xy;}";
-        String fragment=(oes?"#extension GL_OES_EGL_image_external : require\n":"")+"precision mediump float;uniform "+(oes?"samplerExternalOES":"sampler2D")+" image;uniform float alpha;varying vec2 coord;void main(){vec4 c=texture2D(image,coord);gl_FragColor=vec4(c.rgb,c.a*alpha);}";
+        int[] range=new int[2],bits=new int[1];
+        GLES20.glGetShaderPrecisionFormat(GLES20.GL_FRAGMENT_SHADER,GLES20.GL_HIGH_FLOAT,range,0,bits,0);
+        String precision=bits[0]>0?"highp":"mediump";
+        // Some phone GPUs implement mediump UVs with only ten precision bits.
+        // Explicit, matching highp varyings retain subpixel sampling at FHD;
+        // the GLES2 fallback remains available when fragment highp is absent.
+        String varying="varying "+precision+" vec2 coord;";
+        String vertex="attribute vec4 position;attribute vec4 uv;uniform mat4 transform;"+varying+"void main(){gl_Position=position;coord=(transform*uv).xy;}";
+        String fragment=(oes?"#extension GL_OES_EGL_image_external : require\n":"")+"precision "+precision+" float;uniform "+(oes?"samplerExternalOES":"sampler2D")+" image;uniform float alpha;"+varying+"void main(){vec4 c=texture2D(image,coord);gl_FragColor=vec4(c.rgb,c.a*alpha);}";
+        Log.i("MWTV.ImageQuality","Texture shader oes="+oes+" precision="+precision+" highpBits="+bits[0]);
         int result=GLES20.glCreateProgram(),vs=shader(GLES20.GL_VERTEX_SHADER,vertex),fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment);
         GLES20.glAttachShader(result,vs);GLES20.glAttachShader(result,fs);
         GLES20.glBindAttribLocation(result,0,"position");GLES20.glBindAttribLocation(result,1,"uv");GLES20.glLinkProgram(result);

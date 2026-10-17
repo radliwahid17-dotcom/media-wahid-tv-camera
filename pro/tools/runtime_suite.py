@@ -11,6 +11,7 @@ stages = [
     ('Install and seven cold launches', [sys.executable, 'tools/smoke_device.py']),
     ('Original state adapter', [sys.executable, 'tools/device_state_test.py']),
     ('Original logo renderer', [sys.executable, 'tools/logo_device_test.py', '--run-only']),
+    ('Full HD shader detail at four rotations', [sys.executable, 'tools/quality_device_test.py']),
     ('Disable Wi-Fi', ['adb', 'shell', 'svc', 'wifi', 'disable']),
     ('Disable mobile data', ['adb', 'shell', 'svc', 'data', 'disable']),
     ('Finish instrumentation process', ['adb', 'shell', 'am', 'force-stop', 'tv.mediawahid.camerapro']),

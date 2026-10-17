@@ -31,7 +31,7 @@ if not a.run_only:
     library = sdk / 'platforms/android-36/android.jar'
     classpath = (root / 'build/validation-classpath.txt').read_text().strip()
     run(java / 'javac', '-source', '17', '-target', '17', '-cp', str(library) + os.pathsep + classpath,
-        '-d', work / 'classes', sources / 'LogoInstrumentation.java', sources / 'VideoInstrumentation.java')
+        '-d', work / 'classes', sources / 'LogoInstrumentation.java', sources / 'VideoInstrumentation.java', sources / 'QualityInstrumentation.java')
     dependencies = [arg for path in classpath.split(os.pathsep) for arg in ['--classpath', path]]
     run(tools / 'd8', '--min-api', '30', '--lib', library, *dependencies, '--output', work / 'dex',
         *sorted((work / 'classes').rglob('*.class')))

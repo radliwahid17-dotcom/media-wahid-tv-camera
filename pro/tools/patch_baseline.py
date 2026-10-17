@@ -42,6 +42,8 @@ def patch(decoded: Path):
     constructor = '    check-cast v4, Landroidx/camera/video/VideoOutput;'
     code = once(code, constructor, f'''    invoke-static {{v1, v14}}, {bridge}->wrap(Ljava/lang/Object;Landroidx/camera/video/Recorder;)Landroidx/camera/video/VideoOutput;
     move-result-object v4''')
+    code = once(code, '    invoke-virtual {v3}, Landroidx/camera/video/VideoCapture$Builder;->build()Landroidx/camera/video/VideoCapture;',
+                f'    invoke-static {{v3}}, {PACKAGE}flip/PhotoVideoProfile;->build(Landroidx/camera/video/VideoCapture$Builder;)Landroidx/camera/video/VideoCapture;')
     code = once(code, '    check-cast v7, Landroidx/camera/video/Recorder;',
                 f'''    invoke-static {{v7}}, {bridge}->unwrap(Landroidx/camera/video/VideoOutput;)Landroidx/camera/video/Recorder;
     move-result-object v7''')
@@ -144,8 +146,8 @@ def patch(decoded: Path):
     pipeline.write_text(code)
     config = decoded / "apktool.yml"
     code = config.read_text()
-    code = once(code, "versionCode: 2", "versionCode: 5")
-    code = once(code, "versionName: 1.0.1", "versionName: 1.0.4")
+    code = once(code, "versionCode: 2", "versionCode: 6")
+    code = once(code, "versionName: 1.0.1", "versionName: 1.0.5")
     config.write_text(code)
     manifest = decoded / 'AndroidManifest.xml'
     manifest.write_text(once(manifest.read_text(), 'android:debuggable="true"', 'android:debuggable="false"'))

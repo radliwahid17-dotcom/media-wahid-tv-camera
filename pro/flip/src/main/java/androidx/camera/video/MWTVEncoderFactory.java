@@ -19,9 +19,15 @@ public final class MWTVEncoderFactory {
         return StreamInfo.of(info.getId(),StreamInfo.StreamState.ACTIVE,info.getInProgressTransformationInfo());
     }
     public static Recorder build(Recorder.Builder builder) {
+        // Reduce compression of fine detail at the original FHD/30 FPS. CameraX
+        // clamps this preference to the selected device encoder's supported range.
+        // Resolution, frame rate, audio, colour profile and muxer are unchanged.
+        builder.setTargetVideoEncodingBitRate(24_000_000);
         builder.setVideoEncoderFactory((executor,config,sessionType) -> {
             VideoEncoderConfig video=(VideoEncoderConfig)config;
-            Log.i("MWTV.FrameBridge","Configure encoder native frame repeat fps="+video.getEncodeFrameRate());
+            Log.i("MWTV.ImageQuality","Encoder resolution="+video.getResolution()+" bitrate="+video.getBitrate()
+                    +" captureFps="+video.getCaptureFrameRate()+" encodeFps="+video.getEncodeFrameRate()
+                    +" mime="+video.getMimeType()+" profile="+video.getProfile()+" dataSpace="+video.getDataSpace());
             return new MuxerCadenceEncoder(executor,new MWTVRepeatingVideoConfig(video),sessionType);
         });
         return builder.build();

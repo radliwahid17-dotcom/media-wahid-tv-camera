@@ -4,6 +4,9 @@ import android.app.*;
 import android.content.*;
 import android.database.Cursor;
 import android.graphics.*;
+import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.TotalCaptureResult;
 import android.media.*;
 import android.net.Uri;
 import android.os.*;
@@ -40,6 +43,7 @@ public final class VideoInstrumentation extends Instrumentation {
     private final JSONArray sessions=new JSONArray();
     private final JSONArray exports=new JSONArray();
     private final JSONArray timingFailures=new JSONArray();
+    private final Map<String,Map<String,Integer>> cameraRequests=new ConcurrentHashMap<>();
     private interface Work<T> {T run() throws Exception;}
     private <T> T main(Work<T> work) throws Exception {
         AtomicReference<T> result=new AtomicReference<>();AtomicReference<Throwable> error=new AtomicReference<>();
@@ -89,20 +93,39 @@ public final class VideoInstrumentation extends Instrumentation {
             Object noop0=Proxy.newProxyInstance(loader,new Class<?>[]{f0},(p,m,a)->unit);
             Handler overlayHandler=new Handler(((HandlerThread)field(service,"overlayThread")).getLooper());
             OverlayEffect effect=(OverlayEffect)call(pipeline,"createEffect",overlayHandler,onError,noop0,noop1);
-            Preview preview=new Preview.Builder().setTargetRotation(rotation).setMirrorMode(0)
+            cameraRequests.clear();
+            Preview.Builder previewBuilder=new Preview.Builder().setTargetRotation(rotation).setMirrorMode(0)
                 .setResolutionSelector(new ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
-                .setResolutionStrategy(new ResolutionStrategy(new Size(640,480),ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)).build()).build();
+                .setResolutionStrategy(new ResolutionStrategy(new Size(640,480),ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)).build());
+            // Observe native requests through public interop. Never override AF,
+            // AE/AWB, exposure, or other camera parameters in the test fixture.
+            Object interop=type("androidx.camera.camera2.interop.Camera2Interop$Extender")
+                .getConstructor(ExtendableBuilder.class).newInstance(previewBuilder);
+            interop.getClass().getMethod("setSessionCaptureCallback",CameraCaptureSession.CaptureCallback.class).invoke(interop,new CameraCaptureSession.CaptureCallback(){
+                @Override public void onCaptureCompleted(CameraCaptureSession session,CaptureRequest request,TotalCaptureResult result){
+                    Map<String,Integer> data=new HashMap<>();
+                    Integer intent=request.get(CaptureRequest.CONTROL_CAPTURE_INTENT),af=request.get(CaptureRequest.CONTROL_AF_MODE);
+                    Integer ae=request.get(CaptureRequest.CONTROL_AE_MODE),awb=request.get(CaptureRequest.CONTROL_AWB_MODE);
+                    if(intent!=null)data.put("capture_intent",intent);if(af!=null)data.put("af_mode",af);
+                    if(ae!=null)data.put("ae_mode",ae);if(awb!=null)data.put("awb_mode",awb);
+                    cameraRequests.put(session.getDevice().getId(),data);
+                }
+            });
+            Preview preview=previewBuilder.build();
             PreviewView view=(PreviewView)field(activity,"preview");preview.setSurfaceProvider(view.getSurfaceProvider());
             Recorder.Builder builder=new Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).setAspectRatio(AspectRatio.RATIO_16_9)
-                .setTargetVideoEncodingBitRate(16000000);
+                .setTargetVideoEncodingBitRate(24000000);
             Recorder recorder=(Recorder)type("androidx.camera.video.MWTVEncoderFactory").getMethod("build",Recorder.Builder.class).invoke(null,builder);
             VideoOutput output=(VideoOutput)type("tv.mediawahid.camerapro.flip.StableVideoOutput").getMethod("wrap",Object.class,Recorder.class).invoke(null,service,recorder);
-            VideoCapture<VideoOutput> video=new VideoCapture.Builder<>(output).setTargetRotation(rotation)
-                .setTargetFrameRate(new Range<>(30,30)).setDynamicRange(DynamicRange.SDR).setMirrorMode(0).build();
+            VideoCapture.Builder<VideoOutput> videoBuilder=new VideoCapture.Builder<>(output).setTargetRotation(rotation)
+                .setTargetFrameRate(new Range<>(30,30)).setDynamicRange(DynamicRange.SDR).setMirrorMode(0);
+            @SuppressWarnings("unchecked") VideoCapture<VideoOutput> video=(VideoCapture<VideoOutput>)type("tv.mediawahid.camerapro.flip.PhotoVideoProfile")
+                .getMethod("build",VideoCapture.Builder.class).invoke(null,videoBuilder);
             ViewPort port=new ViewPort.Builder(rotation==Surface.ROTATION_0?new Rational(9,16):new Rational(16,9),rotation).setScaleType(ViewPort.FILL_CENTER).build();
             UseCaseGroup group=new UseCaseGroup.Builder().setViewPort(port).addUseCase(preview).addUseCase(video).addEffect(effect).build();
             field(service,"preview",preview);field(service,"video",video);field(service,"image",null);field(service,"overlay",effect);
             Camera camera=provider.bindToLifecycle((LifecycleOwner)service,CameraSelector.DEFAULT_BACK_CAMERA,group);
+            check(video.getCurrentConfig().getDefaultSessionConfig().getTemplateType()==preview.getCurrentConfig().getDefaultSessionConfig().getTemplateType(),"Video/photo preview camera templates match");
             field(service,"camera",camera);
             publish(Map.of(1,true,5,true));return null;
         });
@@ -149,6 +172,10 @@ public final class VideoInstrumentation extends Instrumentation {
         }
         check(main(()->field(service,"video"))==capture,"Same VideoCapture throughout session");
         check(type("tv.mediawahid.camerapro.flip.StableVideoOutput").getMethod("unwrap",VideoOutput.class).invoke(null,call(capture,"getOutput"))==recorder,"Same Recorder throughout session");
+        check(!cameraRequests.isEmpty(),"Native capture request metadata observed");
+        for(Map<String,Integer> request:cameraRequests.values())
+            check(Objects.equals(request.get("capture_intent"),CaptureRequest.CONTROL_CAPTURE_INTENT_PREVIEW),"Native camera uses photo preview capture intent: "+request);
+        JSONObject requestEvidence=new JSONObject(cameraRequests);
         main(()->{call(service,"stopRecording");return null;});
         waitFor("final media URI",()->value("getPhase").toString().equals("IDLE")&&value("getLastSavedUri")!=null,20000);
         check(value("getError")==null,"No recording finalization error: "+value("getError"));
@@ -158,7 +185,7 @@ public final class VideoInstrumentation extends Instrumentation {
         }
         JSONObject analysis=analyze(uri,name,landscape);
         analysis.put("name",name).put("template",template).put("flips",transitions).put("wall_duration_ms",SystemClock.elapsedRealtime()-started)
-            .put("manual_pause",manualPause).put("path",path).put("orientation",landscape?"landscape":"portrait");
+            .put("manual_pause",manualPause).put("path",path).put("orientation",landscape?"landscape":"portrait").put("camera_requests",requestEvidence);
         sessions.put(analysis);exports.put(path);
     }
     private JSONObject analyze(Uri uri,String name,boolean landscape) throws Exception {

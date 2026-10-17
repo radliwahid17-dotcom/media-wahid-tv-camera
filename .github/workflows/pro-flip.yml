@@ -1,4 +1,4 @@
-name: Pro 1.0.4 Seamless Flip APK
+name: Pro 1.0.5 Quality and Flip APK
 on:
   push:
   pull_request:
@@ -38,7 +38,7 @@ jobs:
       - name: Upload installable test APK and provenance
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Wahid-TV-Camera-Pro-1.0.4-SEAMLESS
+          name: Media-Wahid-TV-Camera-Pro-1.0.5-QUALITY-FLIP
           path: pro/artifacts/*
           if-no-files-found: error
       - name: Upload test and lint reports
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Media-Wahid-TV-Camera-Pro-1.0.4-SEAMLESS
+          name: Media-Wahid-TV-Camera-Pro-1.0.5-QUALITY-FLIP
           path: pro/artifacts
       - uses: actions/setup-java@v4
         with:
@@ -89,12 +89,14 @@ jobs:
           import json, os
           from pathlib import Path
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              for name in ['device-smoke', 'device-state', 'logo-device', 'photo-device', 'video-device']:
+              for name in ['device-smoke', 'device-state', 'logo-device', 'video-detail', 'photo-device', 'video-device']:
                   path = Path('artifacts') / (name + '.json')
                   summary.write('### ' + name + '\n\n')
                   if path.is_file():
                       result = json.loads(path.read_text())
                       summary.write('```json\n' + json.dumps(result, indent=2) + '\n```\n\n')
+                      if name == 'video-detail':
+                          print('::notice title=Full HD pixel detail::' + json.dumps(result).replace('%', '%25'))
                       if name == 'video-device':
                           compact = {'result': result['result'], 'assertions': result['assertions'], 'quick': result['quick'], 'timing_failures': result.get('timing_failures', []),
                                      'sessions': [{key: session.get(key) for key in ['name', 'orientation', 'video', 'audio', 'flips', 'manual_pause', 'watermark_pixels', 'animated_emulator_playback_difference']} for session in result['sessions']],
@@ -103,7 +105,7 @@ jobs:
                           print('::notice title=Encoded video evidence::' + notice)
                           for session in result['sessions']:
                               timings = session.get('flips', [])
-                              details = {key: session.get(key) for key in ['name', 'orientation', 'video', 'audio', 'manual_pause', 'watermark_pixels', 'animated_emulator_playback_difference']}
+                              details = {key: session.get(key) for key in ['name', 'orientation', 'video', 'audio', 'manual_pause', 'camera_requests', 'watermark_pixels', 'animated_emulator_playback_difference']}
                               details.update(result=result['result'], flips=len(timings), max_flip_ready_ms=max((x['ready_ms'] for x in timings), default=0))
                               print('::notice title=Playback ' + session['name'] + '::' + json.dumps(details).replace('%', '%25'))
                   else:
@@ -119,6 +121,8 @@ jobs:
             pro/artifacts/device-state.json
             pro/artifacts/logo-device.json
             pro/artifacts/logo-evidence/
+            pro/artifacts/video-detail.json
+            pro/artifacts/quality-instrumentation.log
             pro/artifacts/photo-device.json
             pro/artifacts/photo-evidence/
             pro/artifacts/video-device.json
