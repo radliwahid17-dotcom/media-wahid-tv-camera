@@ -61,8 +61,12 @@ final class StableFrameRenderer {
     private long transitionStart, handoffStart, lastLiveCapture, gapStartCapture, firstPts, lastPts, maxPtsGap;
     private long presented, repeated, lastPresentedSerial = -1, serial;
     private long lastSwapClock;
+    private long tickDue,maxTickDelay,maxInputWork,maxSwapWork;
     private Runnable ready;
-    private final Runnable tick = this::pump;
+    private boolean tickPending;
+    private final Runnable tick = () -> {
+        tickPending=false;maxTickDelay=Math.max(maxTickDelay,Math.max(0,System.nanoTime()-tickDue));pump();
+    };
 
     StableFrameRenderer(Consumer<Throwable> error,Artwork artwork) {
         this.error = error;this.artwork=artwork;
@@ -134,10 +138,12 @@ final class StableFrameRenderer {
         prepared=true; paused=false; fresh=false; logoDirty=true; cadence.reset();
         presented=0; repeated=0; firstPts=0; lastPts=0; maxPtsGap=0; lastPresentedSerial=-1;
         lastSwapClock=0;
+        maxTickDelay=0;maxInputWork=0;maxSwapWork=0;
     }); }
     void stopPumping() { post(() -> {
-        prepared=false; handler.removeCallbacks(tick); waiting=false; transitioning=false; ready=null;
-        Log.i(TAG,"Session frames="+presented+" heldFrames="+repeated+" maxPtsGapNs="+maxPtsGap+" firstPtsNs="+firstPts+" lastPtsNs="+lastPts);
+        prepared=false; handler.removeCallbacks(tick); tickPending=false; waiting=false; transitioning=false; ready=null;
+        Log.i(TAG,"Session frames="+presented+" heldFrames="+repeated+" maxPtsGapNs="+maxPtsGap+" firstPtsNs="+firstPts+" lastPtsNs="+lastPts
+                +" maxTickDelayNs="+maxTickDelay+" maxInputWorkNs="+maxInputWork+" maxSwapWorkNs="+maxSwapWork);
     }); }
     void pause(boolean value) { post(() -> {
         paused=value;
@@ -176,6 +182,7 @@ final class StableFrameRenderer {
         }
     }
     private void frame(Input input) {
+        long workStarted=System.nanoTime();
         try {
             if (input.returned) return; // A queued callback can outlive its producer's return.
             makeCurrent(window!=EGL14.EGL_NO_SURFACE?window:scratch);
@@ -213,10 +220,20 @@ final class StableFrameRenderer {
             }
             schedule();
         } catch (Exception e) { error.accept(e); }
+        finally {maxInputWork=Math.max(maxInputWork,System.nanoTime()-workStarted);}
     }
     private void schedule() {
         if (closing || !prepared || !fresh || !hasFrame || !orientationReady || window==EGL14.EGL_NO_SURFACE) return;
-        handler.removeCallbacks(tick); handler.post(tick);
+        queueTick(0);
+    }
+    private void queueTick(long delay) {
+        // Never move an already scheduled output behind newly queued camera
+        // callbacks. Repeated remove/post can starve the encoder under load.
+        if(tickPending)return;
+        tickPending=true;
+        tickDue=System.nanoTime()+delay*1_000_000L;
+        if(delay==0)handler.postAtFrontOfQueue(tick);
+        else handler.postDelayed(tick,delay);
     }
     private void pump() {
         if (closing || !prepared || !fresh || !hasFrame || !orientationReady || window==EGL14.EGL_NO_SURFACE) return;
@@ -226,7 +243,7 @@ final class StableFrameRenderer {
         // that budget. Normal live 30 FPS inputs need no extra duplicate uploads.
         if ((waiting || (!transitioning && lastPresentedSerial==serial))
                 && lastSwapClock!=0 && now-lastSwapClock<HEARTBEAT_NS) {
-            handler.postDelayed(tick,Math.max(1L,(HEARTBEAT_NS-(now-lastSwapClock)+999_999L)/1_000_000L));
+            queueTick(Math.max(1L,(HEARTBEAT_NS-(now-lastSwapClock)+999_999L)/1_000_000L));
             return;
         }
         long pts=cadence.presentation(now);
@@ -261,15 +278,17 @@ final class StableFrameRenderer {
                 long updated=cadence.presentation(System.nanoTime());
                 if (updated!=FrameCadence.NOT_DUE) pts=updated;
                 require(EGLExt.eglPresentationTimeANDROID(display,window,pts),"Encoder presentation timestamp");
+                long swapStarted=System.nanoTime();
                 require(EGL14.eglSwapBuffers(display,window),"Encoder swap");
                 lastSwapClock=System.nanoTime();
+                maxSwapWork=Math.max(maxSwapWork,lastSwapClock-swapStarted);
                 if (presented==0) firstPts=pts;
                 else maxPtsGap=Math.max(maxPtsGap,pts-lastPts);
                 lastPts=pts;presented++;
                 if (waiting || lastPresentedSerial==serial) repeated++;
                 lastPresentedSerial=serial;
             }
-            handler.postDelayed(tick,cadence.delayMillis(System.nanoTime()));
+            queueTick(cadence.delayMillis(System.nanoTime()));
         } catch (Exception e) { prepared=false; error.accept(e); }
     }
     private void finishHandoff() {
@@ -279,7 +298,7 @@ final class StableFrameRenderer {
         if (callback!=null) callback.run();
     }
     void close() { post(() -> {
-        closing=true;prepared=false;ready=null;handler.removeCallbacks(tick);
+        closing=true;prepared=false;ready=null;handler.removeCallbacks(tick);tickPending=false;
         makeCurrent(scratch);
         if(window!=EGL14.EGL_NO_SURFACE) {EGL14.eglDestroySurface(display,window);window=EGL14.EGL_NO_SURFACE;}
         // Let CameraX return every producer before releasing its texture or this EGL context.
