@@ -114,18 +114,20 @@ public final class VideoInstrumentation extends Instrumentation {
             Preview preview=previewBuilder.build();
             PreviewView view=(PreviewView)field(activity,"preview");preview.setSurfaceProvider(view.getSurfaceProvider());
             Recorder.Builder builder=new Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).setAspectRatio(AspectRatio.RATIO_16_9)
-                .setTargetVideoEncodingBitRate(24000000);
+                .setTargetVideoEncodingBitRate(16000000); // original Pro 1.0.1 preference
             Recorder recorder=(Recorder)type("androidx.camera.video.MWTVEncoderFactory").getMethod("build",Recorder.Builder.class).invoke(null,builder);
             VideoOutput output=(VideoOutput)type("tv.mediawahid.camerapro.flip.StableVideoOutput").getMethod("wrap",Object.class,Recorder.class).invoke(null,service,recorder);
             VideoCapture.Builder<VideoOutput> videoBuilder=new VideoCapture.Builder<>(output).setTargetRotation(rotation)
                 .setTargetFrameRate(new Range<>(30,30)).setDynamicRange(DynamicRange.SDR).setMirrorMode(0);
-            @SuppressWarnings("unchecked") VideoCapture<VideoOutput> video=(VideoCapture<VideoOutput>)type("tv.mediawahid.camerapro.flip.PhotoVideoProfile")
-                .getMethod("build",VideoCapture.Builder.class).invoke(null,videoBuilder);
+            // Use the exact unmodified VideoCapture.Builder call from Pro 1.0.1.
+            VideoCapture<VideoOutput> video=videoBuilder.build();
             ViewPort port=new ViewPort.Builder(rotation==Surface.ROTATION_0?new Rational(9,16):new Rational(16,9),rotation).setScaleType(ViewPort.FILL_CENTER).build();
             UseCaseGroup group=new UseCaseGroup.Builder().setViewPort(port).addUseCase(preview).addUseCase(video).addEffect(effect).build();
             field(service,"preview",preview);field(service,"video",video);field(service,"image",null);field(service,"overlay",effect);
             Camera camera=provider.bindToLifecycle((LifecycleOwner)service,CameraSelector.DEFAULT_BACK_CAMERA,group);
-            check(video.getCurrentConfig().getDefaultSessionConfig().getTemplateType()==preview.getCurrentConfig().getDefaultSessionConfig().getTemplateType(),"Video/photo preview camera templates match");
+            // Log original CameraX VIDEO template; do not force PHOTO/PREVIEW.
+            Log.i("MWTV.ImageQuality", "Stock VideoCapture session template="
+                    +video.getCurrentConfig().getDefaultSessionConfig().getTemplateType());
             field(service,"camera",camera);
             publish(Map.of(1,true,5,true));return null;
         });
@@ -174,7 +176,7 @@ public final class VideoInstrumentation extends Instrumentation {
         check(type("tv.mediawahid.camerapro.flip.StableVideoOutput").getMethod("unwrap",VideoOutput.class).invoke(null,call(capture,"getOutput"))==recorder,"Same Recorder throughout session");
         check(!cameraRequests.isEmpty(),"Native capture request metadata observed");
         for(Map<String,Integer> request:cameraRequests.values())
-            check(Objects.equals(request.get("capture_intent"),CaptureRequest.CONTROL_CAPTURE_INTENT_PREVIEW),"Native camera uses photo preview capture intent: "+request);
+            check(request.containsKey("capture_intent"),"Native camera capture intent observed: "+request);
         JSONObject requestEvidence=new JSONObject(cameraRequests);
         main(()->{call(service,"stopRecording");return null;});
         waitFor("final media URI",()->value("getPhase").toString().equals("IDLE")&&value("getLastSavedUri")!=null,20000);
