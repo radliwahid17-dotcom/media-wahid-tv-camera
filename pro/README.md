@@ -1,12 +1,15 @@
-# Media Wahid TV Camera Pro 1.0.5 Quality and Camera Handoff
+# Media Wahid TV Camera Pro 1.0.6 — Original Quality Recovery
 
 Perbaikan terarah terhadap APK Pro 1.0.1 dalam repositori ini. Package tetap
-`tv.mediawahid.camerapro`, versionName `1.0.5`, versionCode `6`.
+`tv.mediawahid.camerapro`, versionName `1.0.6`, versionCode `7`.
 
-Perbaikan kualitas video dan status pengujian terbaru ada di
-[laporan 1.0.5](docs/QUALITY-1.0.5.md). Target seamless dan kesamaan kualitas pada
-Samsung belum diklaim lulus. Riwayat pengujian 1.0.4 ada di
-[laporan sebelumnya](docs/SEAMLESS-FLIP.md).
+Target utama: pulihkan pengaturan capture dan encoder dari APK Pro 1.0.1 yang
+telah dikonfirmasi pengguna menghasilkan foto dan video bagus (depan/belakang).
+Baca [perubahan pemulihan kualitas 1.0.6](docs/RESTORE-QUALITY-1.0.6.md).
+Versi 1.0.5 menguji bitrate 24 Mbps dan template video PREVIEW; eksperimen
+tersebut kini dicabut. Video tetap memakai kompositor seamless flip, sehingga
+kualitas pixel belum dapat diklaim identik dengan APK referensi tanpa tes Samsung.
+Riwayat: [1.0.5](docs/QUALITY-1.0.5.md), [1.0.4](docs/SEAMLESS-FLIP.md).
 
 Source Kotlin asli tidak tersedia. Proyek Gradle ini mengompilasi delta Java,
 merekonstruksi bytecode aplikasi dengan APKTool, kemudian mempertahankan semua
@@ -25,7 +28,7 @@ sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 python3 tools/verify_apk.py
 ```
 
-Hasil: `artifacts/Media-Wahid-TV-Camera-Pro-1.0.5-QUALITY-FLIP.apk`, SHA256 dan provenance.
+Hasil: `artifacts/Media-Wahid-TV-Camera-Pro-1.0.6-ORIGINAL-QUALITY.apk`, SHA256 dan provenance.
 APKTool dan APK referensi diverifikasi terhadap checksum terpin sebelum patch.
 Gradle wrapper memverifikasi checksum distribusi Gradle.
 
