@@ -47,7 +47,7 @@ aplikasi asli yang tidak tersedia. Run CI yang belum dijalankan tidak dianggap l
   selama recording tetap mengikuti implementasi asli.
 - Saat recording/paused, kamera tujuan, kualitas aktif dan FPS diperiksa sebelum unbind;
   query kemampuan dilakukan di worker thread. Produksi tetap FHD SDR/30 FPS,
-  dengan preferensi 24 Mbps dan template kamera PREVIEW seperti mode foto.
+  dengan preferensi asli 16 Mbps dan template VideoCapture bawaan Pro 1.0.1.
   Preview, VideoCapture, Recorder, OverlayEffect, output MediaStore, audio dan
   state waktu dipertahankan; tidak ada stop/start untuk flip.
 - `StableVideoOutput` mempertahankan satu SurfaceRequest encoder; surface input
@@ -125,6 +125,7 @@ Audio emulator hening tidak membuktikan sinkronisasi ucapan pada Samsung.
 Prosedur regresi Samsung dan status bukti ada di [docs/TESTING.md](docs/TESTING.md).
 Tanpa uji media yang lulus, APK belum dinyatakan memenuhi seluruh definition of done.
 
-Profil gambar dan bukti terbaru: [docs/QUALITY-1.0.5.md](docs/QUALITY-1.0.5.md).
+Pemulihan setelan kamera terbaru: [docs/RESTORE-QUALITY-1.0.6.md](docs/RESTORE-QUALITY-1.0.6.md).
+Riwayat profil percobaan 1.0.5: [docs/QUALITY-1.0.5.md](docs/QUALITY-1.0.5.md).
 Arsitektur flip dan riwayat: [docs/SEAMLESS-FLIP.md](docs/SEAMLESS-FLIP.md).
 Riwayat revisi logo permanen: [docs/PERMANENT-LOGOS.md](docs/PERMANENT-LOGOS.md).
