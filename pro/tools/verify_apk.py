@@ -11,11 +11,11 @@ import struct
 import zlib
 
 root = Path(__file__).resolve().parents[1]
-apk = Path(sys.argv[1]) if len(sys.argv) > 1 else root / 'artifacts/Media-Wahid-TV-Camera-Pro-1.0.5-QUALITY-FLIP.apk'
+apk = Path(sys.argv[1]) if len(sys.argv) > 1 else root / 'artifacts/Media-Wahid-TV-Camera-Pro-1.0.6-ORIGINAL-QUALITY.apk'
 baseline = root / 'Media-Wahid-TV-Camera-Pro-1.0.1.apk'
 sdk = Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT'])
 badging = subprocess.check_output([sdk / 'build-tools/36.0.0/aapt', 'dump', 'badging', apk], text=True)
-assert "package: name='tv.mediawahid.camerapro' versionCode='6' versionName='1.0.5'" in badging
+assert "package: name='tv.mediawahid.camerapro' versionCode='7' versionName='1.0.6'" in badging
 assert "launchable-activity: name='tv.mediawahid.camerapro.MainActivity'" in badging
 assert 'application-debuggable' not in badging, 'Final APK must use release manifest settings'
 with zipfile.ZipFile(baseline) as old, zipfile.ZipFile(apk) as new:

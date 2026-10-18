@@ -1,4 +1,4 @@
-name: Pro 1.0.5 Quality and Flip APK
+name: Pro 1.0.6 Original Camera Quality APK
 on:
   push:
   pull_request:
@@ -38,7 +38,7 @@ jobs:
       - name: Upload installable test APK and provenance
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Wahid-TV-Camera-Pro-1.0.5-QUALITY-FLIP
+          name: Media-Wahid-TV-Camera-Pro-1.0.6-ORIGINAL-QUALITY
           path: pro/artifacts/*
           if-no-files-found: error
       - name: Upload test and lint reports
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Media-Wahid-TV-Camera-Pro-1.0.5-QUALITY-FLIP
+          name: Media-Wahid-TV-Camera-Pro-1.0.6-ORIGINAL-QUALITY
           path: pro/artifacts
       - uses: actions/setup-java@v4
         with:

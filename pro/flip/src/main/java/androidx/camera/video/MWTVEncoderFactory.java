@@ -19,10 +19,9 @@ public final class MWTVEncoderFactory {
         return StreamInfo.of(info.getId(),StreamInfo.StreamState.ACTIVE,info.getInProgressTransformationInfo());
     }
     public static Recorder build(Recorder.Builder builder) {
-        // Reduce compression of fine detail at the original FHD/30 FPS. CameraX
-        // clamps this preference to the selected device encoder's supported range.
-        // Resolution, frame rate, audio, colour profile and muxer are unchanged.
-        builder.setTargetVideoEncodingBitRate(24_000_000);
+        // Keep original Pro 1.0.1 image quality: no new bitrate preference here.
+        // The original service sets the 16 Mbps preference on Recorder.Builder.
+        // We only extend its encoder factory to support persistent recording.
         builder.setVideoEncoderFactory((executor,config,sessionType) -> {
             VideoEncoderConfig video=(VideoEncoderConfig)config;
             Log.i("MWTV.ImageQuality","Encoder resolution="+video.getResolution()+" bitrate="+video.getBitrate()
